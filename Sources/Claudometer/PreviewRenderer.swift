@@ -43,9 +43,9 @@ enum PreviewRenderer {
                 .environment(\.colorScheme, name == "dark" ? .dark : .light)
                 .environment(\.isPreviewRender, true)
             let renderer = ImageRenderer(content: view)
-            renderer.scale = 2
+            renderer.scale = pixelScale
             if let image = renderer.nsImage {
-                write(image, scale: 1, to: dir.appendingPathComponent("popover-\(name)\(suffix(sample)).png"))
+                write(image, scale: pixelScale, to: dir.appendingPathComponent("popover-\(name)\(suffix(sample)).png"))
             }
 
             let settings = AppSettings.current
@@ -60,15 +60,19 @@ enum PreviewRenderer {
                     .padding(12)
                     .environment(\.colorScheme, name == "dark" ? .dark : .light)
                 let widgetRenderer = ImageRenderer(content: widget)
-                widgetRenderer.scale = 2
+                widgetRenderer.scale = pixelScale
                 if let image = widgetRenderer.nsImage {
-                    write(image, scale: 1, to: dir.appendingPathComponent("widget-\(size.rawValue)-\(name)\(suffix(sample)).png"))
+                    write(image, scale: pixelScale, to: dir.appendingPathComponent("widget-\(size.rawValue)-\(name)\(suffix(sample)).png"))
                 }
             }
         }
         print("Wrote previews to \(dir.path)")
         exit(0)
     }
+
+    /// Output pixels per point. `image.size` is in points, so writing at 1 threw away the
+    /// renderer's extra resolution and produced blurry screenshots.
+    private static let pixelScale: CGFloat = 3
 
     private static func suffix(_ sample: String?) -> String { sample.map { "-\($0)" } ?? "" }
 
