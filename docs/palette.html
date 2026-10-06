@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ClaudeMeter · Color system</title>
+<style>
+:root{color-scheme:light;--ink:#20202B;--muted:#777783;--line:#E8E6E2;--paper:#F7F6F3;--white:#FFF;--coral:#E76F51;--coral-hover:#D95E43;--coral-soft:#FCEAE5;--plum:#51405F;--plum-soft:#EEEAF1;--teal:#278C82;--teal-soft:#E4F3F0;--blue:#5577C8;--blue-soft:#E9EEFA;--amber:#D59A32;--amber-soft:#FBF2DE;--red:#C95656;--red-soft:#F9E9E8;--green:#43866A;--green-soft:#E7F2EB;--chart-violet:#9272C6;--chart-cyan:#53A9B5}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.wrap{max-width:1120px;margin:auto;padding:54px 34px 72px}.eyebrow{text-transform:uppercase;letter-spacing:.14em;font-size:11px;font-weight:750;color:var(--coral)}h1{font-size:42px;line-height:1.08;letter-spacing:-.04em;margin:10px 0 12px}p.lede{color:var(--muted);max-width:660px;margin:0 0 38px}.section{margin-top:38px}.section h2{font-size:17px;margin:0 0 14px;letter-spacing:-.01em}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.swatch{background:#fff;border:1px solid var(--line);border-radius:13px;overflow:hidden}.color{height:84px}.meta{padding:11px 13px 13px}.name{font-weight:700;font-size:13px}.hex{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);margin-top:2px}.use{font-size:11px;color:var(--muted);margin-top:7px}.demo{display:grid;grid-template-columns:1.4fr 1fr;gap:15px;margin-top:14px}.panel{background:var(--white);border:1px solid var(--line);border-radius:16px;padding:21px}.panel-title{font-size:13px;color:var(--muted);font-weight:650}.stat{font-size:31px;font-weight:740;letter-spacing:-.04em;margin:8px 0 2px}.row{display:flex;align-items:center;justify-content:space-between;gap:12px}.badge{font-size:11px;font-weight:700;border-radius:99px;padding:5px 9px;background:var(--teal-soft);color:var(--teal)}.bar{height:8px;border-radius:10px;background:#F0EEEB;overflow:hidden;margin-top:18px}.bar i{display:block;width:68%;height:100%;background:linear-gradient(90deg,var(--coral),#F29A72);border-radius:10px}.tiny{font-size:12px;color:var(--muted);margin-top:10px}.bars{height:108px;display:flex;align-items:end;gap:9px;padding-top:12px}.bars i{flex:1;border-radius:5px 5px 2px 2px;background:var(--coral)}.bars i:nth-child(3n+2){background:var(--plum)}.bars i:nth-child(3n){background:var(--teal)}.tokens{white-space:pre;overflow:auto;background:#24232C;color:#F5F2EF;border-radius:14px;padding:18px 20px;font:12px/1.75 ui-monospace,SFMono-Regular,Menlo,monospace}.note{color:var(--muted);font-size:12px;margin-top:10px}@media(max-width:700px){.wrap{padding:34px 18px}.grid{grid-template-columns:repeat(2,1fr)}.demo{grid-template-columns:1fr}h1{font-size:34px}}
+</style>
+</head>
+<body><main class="wrap">
+<div class="eyebrow">ClaudeMeter · product color system</div><h1>Clear signals.<br>Warm personality.</h1><p class="lede">A complete dashboard palette for usage, spend, and limits. Coral gives the product a recognizable voice; quiet warm neutrals keep dense metrics easy to scan; semantic colors carry meaning consistently.</p>
+<section class="section"><h2>Brand & foundation</h2><div class="grid">
+<div class="swatch"><div class="color" style="background:#E76F51"></div><div class="meta"><div class="name">Meter Coral</div><div class="hex">#E76F51</div><div class="use">Primary action, active states, key data</div></div></div>
+<div class="swatch"><div class="color" style="background:#D95E43"></div><div class="meta"><div class="name">Coral Pressed</div><div class="hex">#D95E43</div><div class="use">Hover and pressed actions</div></div></div>
+<div class="swatch"><div class="color" style="background:#FCEAE5"></div><div class="meta"><div class="name">Coral Tint</div><div class="hex">#FCEAE5</div><div class="use">Selected rows, subtle callouts</div></div></div>
+<div class="swatch"><div class="color" style="background:#51405F"></div><div class="meta"><div class="name">Deep Plum</div><div class="hex">#51405F</div><div class="use">Secondary series, premium emphasis</div></div></div>
+<div class="swatch"><div class="color" style="background:#20202B"></div><div class="meta"><div class="name">Ink</div><div class="hex">#20202B</div><div class="use">Headings and primary text</div></div></div>
+<div class="swatch"><div class="color" style="background:#777783"></div><div class="meta"><div class="name">Muted</div><div class="hex">#777783</div><div class="use">Secondary text and labels</div></div></div>
+<div class="swatch"><div class="color" style="background:#E8E6E2"></div><div class="meta"><div class="name">Border</div><div class="hex">#E8E6E2</div><div class="use">Dividers, outlines, card edges</div></div></div>
+<div class="swatch"><div class="color" style="background:#F7F6F3"></div><div class="meta"><div class="name">Canvas</div><div class="hex">#F7F6F3</div><div class="use">App background; cards use white</div></div></div>
+</div></section>
+<section class="section"><h2>Data series</h2><div class="grid">
+<div class="swatch"><div class="color" style="background:#E76F51"></div><div class="meta"><div class="name">Usage</div><div class="hex">#E76F51</div><div class="use">Tokens, requests, primary metric</div></div></div>
+<div class="swatch"><div class="color" style="background:#51405F"></div><div class="meta"><div class="name">Spend</div><div class="hex">#51405F</div><div class="use">Cost and comparison series</div></div></div>
+<div class="swatch"><div class="color" style="background:#278C82"></div><div class="meta"><div class="name">Capacity</div><div class="hex">#278C82</div><div class="use">Remaining quota, healthy trend</div></div></div>
+<div class="swatch"><div class="color" style="background:#5577C8"></div><div class="meta"><div class="name">Activity</div><div class="hex">#5577C8</div><div class="use">Sessions, secondary information</div></div></div>
+<div class="swatch"><div class="color" style="background:#9272C6"></div><div class="meta"><div class="name">Series 5</div><div class="hex">#9272C6</div><div class="use">Additional model or team series</div></div></div>
+<div class="swatch"><div class="color" style="background:#53A9B5"></div><div class="meta"><div class="name">Series 6</div><div class="hex">#53A9B5</div><div class="use">Additional comparison series</div></div></div>
+<div class="swatch"><div class="color" style="background:#D59A32"></div><div class="meta"><div class="name">Attention</div><div class="hex">#D59A32</div><div class="use">Approaching a usage limit</div></div></div>
+<div class="swatch"><div class="color" style="background:#C95656"></div><div class="meta"><div class="name">Over limit</div><div class="hex">#C95656</div><div class="use">Exceeded quota, billing issue</div></div></div>
+</div></section>
+<section class="section"><h2>Status colors</h2><div class="grid">
+<div class="swatch"><div class="color" style="background:#43866A"></div><div class="meta"><div class="name">Success</div><div class="hex">#43866A · tint #E7F2EB</div><div class="use">Connected, within budget, complete</div></div></div>
+<div class="swatch"><div class="color" style="background:#D59A32"></div><div class="meta"><div class="name">Warning</div><div class="hex">#D59A32 · tint #FBF2DE</div><div class="use">Limit nearing; action may be needed</div></div></div>
+<div class="swatch"><div class="color" style="background:#C95656"></div><div class="meta"><div class="name">Error</div><div class="hex">#C95656 · tint #F9E9E8</div><div class="use">Failed, blocked, or over limit</div></div></div>
+<div class="swatch"><div class="color" style="background:#5577C8"></div><div class="meta"><div class="name">Info</div><div class="hex">#5577C8 · tint #E9EEFA</div><div class="use">Helpful context and neutral notices</div></div></div>
+</div></section>
+<section class="section"><h2>In context</h2><div class="demo"><div class="panel"><div class="row"><div class="panel-title">Monthly token usage</div><span class="badge">On track</span></div><div class="stat">6.8M <span style="font-size:15px;font-weight:550;color:#777783">/ 10M</span></div><div class="tiny">68% of your included usage</div><div class="bar"><i></i></div><div class="tiny">Resets Oct 31 · 12 days remaining</div></div><div class="panel"><div class="panel-title">Daily activity</div><div class="bars"><i style="height:34%"></i><i style="height:52%"></i><i style="height:43%"></i><i style="height:71%"></i><i style="height:58%"></i><i style="height:86%"></i><i style="height:66%"></i><i style="height:95%"></i><i style="height:74%"></i><i style="height:62%"></i></div><div class="tiny">Mon&nbsp;&nbsp;&nbsp; Tue&nbsp;&nbsp;&nbsp; Wed&nbsp;&nbsp;&nbsp; Thu&nbsp;&nbsp;&nbsp; Fri&nbsp;&nbsp;&nbsp; Sat&nbsp;&nbsp;&nbsp; Sun</div></div></div></section>
+<section class="section"><h2>CSS tokens</h2><pre class="tokens">:root {
+  /* Brand */
+  --color-brand: #E76F51;
+  --color-brand-hover: #D95E43;
+  --color-brand-soft: #FCEAE5;
+  --color-plum: #51405F;
+
+  /* Surfaces & text */
+  --color-canvas: #F7F6F3;
+  --color-surface: #FFFFFF;
+  --color-ink: #20202B;
+  --color-muted: #777783;
+  --color-border: #E8E6E2;
+
+  /* Data series */
+  --color-usage: #E76F51;
+  --color-spend: #51405F;
+  --color-capacity: #278C82;
+  --color-activity: #5577C8;
+  --color-series-5: #9272C6;
+  --color-series-6: #53A9B5;
+
+  /* Status */
+  --color-success: #43866A;
+  --color-warning: #D59A32;
+  --color-danger: #C95656;
+  --color-info: #5577C8;
+}</pre><div class="note">Chart tip: keep each metric mapped to the same color across cards, legends, and time ranges. Use labels or line styles as well as color when series are important.</div></section>
+</main></body></html>

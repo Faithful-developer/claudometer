@@ -1,0 +1,11 @@
+.build/
+build/
+*.xcodeproj/
+DerivedData/
+.swiftpm/
+.DS_Store
+xcuserdata/
+
+/agents/
+/review/
+Claudometer.xcodeproj/

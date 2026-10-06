@@ -1,0 +1,106 @@
+# XcodeGen spec for the full build (menu bar app + desktop widget).
+#   brew install xcodegen && xcodegen && open Claudometer.xcodeproj
+# Set DEVELOPMENT_TEAM below (or in Xcode) — WidgetKit and App Groups need a signed build.
+name: Claudometer
+options:
+  bundleIdPrefix: dev.claudometer
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: ""            # ← your Team ID
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_HARDENED_RUNTIME: YES
+
+targets:
+  # Static library: linked into both the app and the widget, so there is no separately
+  # signed framework for library validation to reject in locally signed builds.
+  ClaudometerCore:
+    type: library.static
+    platform: macOS
+    sources: [Sources/ClaudometerCore]
+    settings:
+      base:
+        PRODUCT_NAME: ClaudometerCore
+        SKIP_INSTALL: YES
+
+  Claudometer:
+    type: application
+    platform: macOS
+    sources:
+      - Sources/Claudometer
+      - path: Resources/AppIcon.icns
+        buildPhase: resources
+    dependencies:
+      - target: ClaudometerCore
+      - target: ClaudometerWidget
+    entitlements:
+      path: Config/Claudometer.entitlements
+      properties:
+        # Not sandboxed: reads Claude Code's Keychain item (TZ NFR-7).
+        com.apple.security.app-sandbox: false
+    info:
+      path: Config/Claudometer-Info.plist
+      properties:
+        CFBundleDisplayName: Claudometer
+        CFBundleIconFile: AppIcon
+        LSUIElement: true
+        LSApplicationCategoryType: public.app-category.developer-tools
+        CFBundleURLTypes:
+          - CFBundleURLName: dev.claudometer.app
+            CFBundleURLSchemes: [claudometer]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.claudometer.app
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) WIDGET_SUPPORT
+
+  ClaudometerWidget:
+    type: app-extension
+    platform: macOS
+    sources: [Widget]
+    dependencies:
+      - target: ClaudometerCore
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    entitlements:
+      path: Config/ClaudometerWidget.entitlements
+      properties:
+        # WidgetKit extensions must be sandboxed. Read-only access to the app's data folder
+        # replaces an App Group, so no signing team is needed.
+        com.apple.security.app-sandbox: true
+        com.apple.security.temporary-exception.files.home-relative-path.read-only:
+          - /Library/Application Support/Claudometer/
+    info:
+      path: Config/ClaudometerWidget-Info.plist
+      properties:
+        CFBundleDisplayName: Claudometer
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.claudometer.app.widget
+
+  ClaudometerCoreTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/ClaudometerCoreTests
+        excludes: [Fixtures]
+      - path: Tests/ClaudometerCoreTests/Fixtures
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - target: ClaudometerCore
+
+schemes:
+  Claudometer:
+    build:
+      targets:
+        Claudometer: all
+    test:
+      targets: [ClaudometerCoreTests]
