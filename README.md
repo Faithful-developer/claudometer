@@ -1,19 +1,38 @@
 <p align="center"><img src="docs/icon.png" width="128" alt="Claudometer icon"></p>
 
-# Claudometer
+# Claudometer — unofficial Claude usage meter
 
-A tiny macOS menu bar app (plus a desktop widget) that shows how much of your **Claude plan limits** you've used. It covers the 5‑hour session window and the weekly windows, each with a reset countdown.
+A tiny macOS menu bar app (plus a desktop widget) that shows how much of your **Claude plan limits** you've used: the 5‑hour session window and the weekly windows, each with a reset countdown.
+
+> **Unofficial.** Claudometer is an independent open-source project. It is not affiliated with, endorsed by or supported by Anthropic. It relies on an **undocumented** usage endpoint that may change or stop working at any time; if the format changes, the app says "Usage format not recognised" instead of showing wrong numbers.
 
 <p align="center">
   <img src="docs/screenshots/menubar-light.png" height="36" alt="Menu bar item">
   <br><br>
-  <img src="docs/screenshots/popover-light.png" width="310" alt="Popover, light">
-  <img src="docs/screenshots/popover-dark.png" width="310" alt="Popover, dark">
+  <img src="docs/screenshots/popover-light.png" width="300" alt="Popover">
+  &nbsp;
+  <img src="docs/screenshots/widget-medium-dark-high.png" width="388" alt="Medium desktop widget">
 </p>
-<p align="center">
-  <img src="docs/screenshots/widget-small-light.png" width="194" alt="Small widget">
-  <img src="docs/screenshots/widget-medium-dark-high.png" width="388" alt="Medium widget, high usage">
-</p>
+
+## What it reads, and what it never does
+
+**Reads**
+- Your **Claude Code login token** from the macOS Keychain item `Claude Code-credentials`, **read-only**. Claudometer never changes, refreshes or deletes it.
+- Your usage from `api.anthropic.com/api/oauth/usage`, the same account endpoint Claude Code uses.
+- It saves only the last usage numbers (percentages and reset times, no token) to `~/Library/Application Support/Claudometer/`, so the widget can show them.
+- *Optional, off by default:* a claude.ai `sessionKey` you paste in yourself (see [claude.ai backup](#optional-claudeai-backup)).
+
+**Never**
+- Never writes a token or key to disk, `UserDefaults`, logs or the widget's folder. Tokens stay in memory; the optional session key lives only in Claudometer's own Keychain item.
+- Never logs credentials or usage.
+- Never talks to any server except Anthropic (`api.anthropic.com`, and `claude.ai` only if you enable the backup) and GitHub (`api.github.com`, a daily anonymous check for new releases).
+- No analytics, no telemetry, no third-party services.
+
+The code is short and open, so you can check all of this yourself: [`CredentialsProvider`](Sources/ClaudometerCore/CredentialsProvider.swift), [`UsageAPIClient`](Sources/ClaudometerCore/UsageAPIClient.swift), [`UsageService`](Sources/ClaudometerCore/UsageService.swift).
+
+### About the Keychain prompt
+
+The first time Claudometer reads Claude Code's login, macOS may show *"Claudometer wants to use your confidential information stored in 'Claude Code-credentials' in your keychain."* That's expected: it's how the app reuses your existing Claude Code login instead of asking for a password. Choose **Always Allow** so it doesn't ask on every check. You can revoke it any time in Keychain Access.
 
 The full specification is in [TZ.md](TZ.md).
 
@@ -24,8 +43,11 @@ The full specification is in [TZ.md](TZ.md).
 
 ## Install
 
+Building it yourself (below) is the most transparent option. Prebuilt, ad-hoc signed builds are also available:
+
+
 Download the latest `Claudometer-x.y.z.dmg` from [Releases](https://github.com/Faithful-developer/claudometer/releases) and drag the app to Applications.
-The app isn't notarized yet, so macOS blocks the first launch: open **System Settings → Privacy & Security** and click **Open Anyway**.
+It isn't signed with an Apple Developer ID or notarized, so macOS blocks the first launch: open **System Settings → Privacy & Security** and click **Open Anyway**.
 Claudometer checks for new releases once a day and shows **Update Available** in the menu; *Settings → About* has **Check for Updates**.
 
 ## Build & run (no Xcode needed)
@@ -48,6 +70,15 @@ scripts/build-xcode.sh      # app + widget → /Applications, launched
 
 No Apple developer team is needed. The app and widget share data through `~/Library/Application Support/Claudometer/` instead of an App Group: the sandboxed widget has a read-only sandbox exception for that one folder. The shared code is linked statically into both, so library validation passes with local signing. After installing, right-click the desktop → **Edit Widgets…** → search "Claudometer".
 
+## Optional: claude.ai backup
+
+Claude Code refreshes its login only while it's running, so after about 8 hours with Claude Code closed the token expires and Claudometer shows the last known numbers. If you want usage to stay live anyway, paste your claude.ai `sessionKey` cookie in **Settings → Login** and press **Save & Test**.
+
+- **Off by default.** Nothing happens unless you paste a key.
+- Used **only** while Claude Code's login is expired or missing; Claude Code's login always comes first.
+- Stored only in Claudometer's own Keychain item and sent only to `claude.ai`. **Remove** deletes it.
+- It's your full claude.ai web session and the claude.ai endpoint is also undocumented, so skip this if you're not comfortable with that.
+
 ## How it works
 
 | Piece | What it does |
@@ -59,8 +90,6 @@ No Apple developer team is needed. The app and widget share data through `~/Libr
 | `UsageStore` | Polls every 5 min by default (1–30). Backs off exponentially on errors (1→2→4→8→15 min), honours `Retry-After`, and refreshes on wake or when the network comes back |
 | `NotificationManager` | Optional alerts at 80% / 95% (once per window per reset cycle) and when a limit resets |
 | `SnapshotStore` | Last known state as JSON (`~/Library/Application Support/Claudometer/`, or the App Group in the widget build). Contains no token |
-
-> ⚠️ The usage endpoint is **undocumented** and may change. If it does, Claudometer shows "Usage format not recognised" instead of wrong numbers.
 
 ## Project layout
 
@@ -83,7 +112,7 @@ Claudometer follows Apple's Human Interface Guidelines and looks like a built-in
 - **Warnings:** system orange and red appear only above your thresholds, always with an SF Symbol and a label.
 - **Menu bar icon:** monochrome like other system icons until usage needs attention.
 - **Actions:** full-width menu rows with keyboard shortcuts (⌘R, ⌘,, ⌘Q) and an accent-coloured hover highlight.
-- **Settings:** toolbar tabs (General, Notifications, About) with grouped forms.
+- **Settings:** toolbar tabs (General, Notifications, Login, About) with grouped forms.
 - **Meters:** capacity rings and bars, like the Batteries widget. A 2pt tick marks how much of the window's time has passed, so you can see your pace.
 - **Usage by surface:** one stacked bar with a legend that lists each value. Series follow the palette order: Usage coral (Claude Code), plum (Chats), teal (Cowork). The dark steps were picked to keep the hues and still pass the data-viz colour-blind checks.
 - **Shared code:** the components live in `Sources/ClaudometerCore/UI/`, so the popover and widgets match.
@@ -94,3 +123,7 @@ Claudometer follows Apple's Human Interface Guidelines and looks like a built-in
 - `swift scripts/make-icon.swift` regenerates `Resources/AppIcon.icns`.
 - `scripts/release.sh 0.2.0 "notes"` builds the app with the widget, packages a DMG, tags `v0.2.0` and publishes the GitHub release. Always bump the version: the in-app update check compares it with the latest release.
 - Notifications and launch at login only work from the bundled `.app`, not from `swift run`.
+
+## License
+
+[MIT](LICENSE). "Claude" is a trademark of Anthropic; this project only refers to it to describe what it measures.
