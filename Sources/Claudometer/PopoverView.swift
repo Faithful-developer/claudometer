@@ -9,6 +9,7 @@ import SwiftUI
 /// are full-width menu rows with keyboard shortcuts.
 struct PopoverView: View {
     @Environment(UsageStore.self) private var store
+    @Environment(UpdateStore.self) private var updates
     @AppStorage(SettingsKey.warningThreshold) private var warning = 60.0
     @AppStorage(SettingsKey.criticalThreshold) private var critical = 85.0
     @AppStorage(SettingsKey.menuBarMetric) private var metric = MenuBarMetric.session.rawValue
@@ -111,6 +112,9 @@ struct PopoverView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 14)
                 .padding(.bottom, 4)
+            }
+            if let release = updates.available {
+                MenuRow(title: "Update Available: \(release.version)…", shortcut: nil) { updates.openDownload() }
             }
             MenuRow(title: "Refresh Now", shortcut: "⌘R") { store.refresh() }
                 .keyboardShortcut("r")

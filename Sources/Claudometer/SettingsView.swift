@@ -230,6 +230,8 @@ final class SessionKeyModel: ObservableObject {
 }
 
 private struct AboutSettings: View {
+    @Environment(UpdateStore.self) private var updates
+
     var body: some View {
         VStack(spacing: 10) {
             Image(nsImage: NSApp.applicationIconImage)
@@ -243,6 +245,20 @@ private struct AboutSettings: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                if let release = updates.available {
+                    Button("Download \(release.version)…") { updates.openDownload() }
+                        .keyboardShortcut(.defaultAction)
+                } else {
+                    Button("Check for Updates") { Task { await updates.check(manual: true) } }
+                        .disabled(updates.isChecking)
+                }
+                if updates.isChecking { ProgressView().controlSize(.small) }
+            }
+            .padding(.top, 6)
+            if let result = updates.lastResult {
+                Text(result).font(.callout).foregroundStyle(.secondary)
+            }
         }
         .padding(28)
         .frame(maxWidth: .infinity)

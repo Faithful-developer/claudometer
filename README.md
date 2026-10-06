@@ -22,6 +22,12 @@ The full specification is in [TZ.md](TZ.md).
 - macOS 14 Sonoma or later
 - A Claude Pro/Max subscription and **Claude Code signed in** (`claude` → `/login`). Claudometer reuses that login.
 
+## Install
+
+Download the latest `Claudometer-x.y.z.dmg` from [Releases](https://github.com/Faithful-developer/claudometer/releases) and drag the app to Applications.
+The app isn't notarized yet, so macOS blocks the first launch: open **System Settings → Privacy & Security** and click **Open Anyway**.
+Claudometer checks for new releases once a day and shows **Update Available** in the menu; *Settings → About* has **Check for Updates**.
+
 ## Build & run (no Xcode needed)
 
 ```bash
@@ -86,4 +92,5 @@ Claudometer follows Apple's Human Interface Guidelines and looks like a built-in
 
 - `Claudometer --render-previews <dir> [--sample high]` renders the menu bar icon, popover and all three widget sizes (light and dark) to PNGs, then exits. It uses the cached state, or made-up high-usage numbers with `--sample high`. It's used for the screenshots above.
 - `swift scripts/make-icon.swift` regenerates `Resources/AppIcon.icns`.
+- `scripts/release.sh 0.2.0 "notes"` builds the app with the widget, packages a DMG, tags `v0.2.0` and publishes the GitHub release. Always bump the version: the in-app update check compares it with the latest release.
 - Notifications and launch at login only work from the bundled `.app`, not from `swift run`.

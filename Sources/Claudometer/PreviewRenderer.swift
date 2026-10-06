@@ -38,6 +38,7 @@ enum PreviewRenderer {
 
             let view = PopoverView()
                 .environment(store)
+                .environment(UpdateStore())
                 .background(Palette.canvas)
                 .environment(\.colorScheme, name == "dark" ? .dark : .light)
                 .environment(\.isPreviewRender, true)

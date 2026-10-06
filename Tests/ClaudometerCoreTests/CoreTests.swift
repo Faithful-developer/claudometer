@@ -241,3 +241,20 @@ private func json(_ string: String) -> Data { Data(string.utf8) }
         #expect(snapshot.projected(at: now.addingTimeInterval(-7200)) == snapshot)
     }
 }
+
+@Suite struct UpdateTests {
+    @Test func comparesVersions() {
+        #expect(UpdateChecker.isNewer("0.2.0", than: "0.1.0"))
+        #expect(UpdateChecker.isNewer("0.10.0", than: "0.9.2"))
+        #expect(!UpdateChecker.isNewer("1.0", than: "1.0.0"))
+        #expect(!UpdateChecker.isNewer("0.1.0", than: "0.2.0"))
+    }
+
+    @Test func readsLatestRelease() {
+        let body = json(#"{"tag_name":"v0.2.0","html_url":"https://github.com/x/y/releases/tag/v0.2.0","draft":false,"prerelease":false}"#)
+        #expect(UpdateChecker.newer(than: "0.1.0", in: body)?.version == "0.2.0")
+        #expect(UpdateChecker.newer(than: "0.2.0", in: body) == nil)
+        let pre = json(#"{"tag_name":"v0.3.0","prerelease":true}"#)
+        #expect(UpdateChecker.newer(than: "0.1.0", in: pre) == nil)
+    }
+}

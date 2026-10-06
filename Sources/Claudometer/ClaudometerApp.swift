@@ -7,6 +7,7 @@ struct ClaudometerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     // `App.init` runs once per launch, so a plain stored instance is enough here.
     private let store: UsageStore
+    private let updates = UpdateStore()
 
     init() {
         AppSettings.register()
@@ -16,6 +17,7 @@ struct ClaudometerApp: App {
         AppAppearance.applyCurrent()
         store = UsageStore()
         store.start()
+        updates.start()
         AppDelegate.store = store
     }
 
@@ -23,6 +25,7 @@ struct ClaudometerApp: App {
         MenuBarExtra {
             PopoverView()
                 .environment(store)
+                .environment(updates)
         } label: {
             MenuBarLabel(store: store)
         }
@@ -31,6 +34,7 @@ struct ClaudometerApp: App {
         Settings {
             SettingsView()
                 .environment(store)
+                .environment(updates)
         }
     }
 }
