@@ -382,10 +382,25 @@ Stale data (E-3 to E-6) is still displayed but greyed out, with a "Showing data 
 - **Done:**
   - M1.
   - M2: built with SwiftPM, live data verified.
-  - M3: widget extension builds with Xcode and no signing team (`scripts/build-xcode.sh`). AC-4 still needs a check on a real Mac.
+  - M3: widget extension builds with Xcode and no signing team (`scripts/build-xcode.sh`). AC-4 verified on a real Mac (2026-10-07).
   - M4: written; notifications and launch at login need the bundled `.app`.
   - F-1: claude.ai session key fallback (§2.3).
-- **M5 so far:** icon, unit tests (AC-10 passes), ad-hoc signed universal `.app`, DMG and release scripts (`scripts/release.sh`), and an in-app update check against GitHub Releases (part of F-6, without Sparkle). **Decision (2026-10-07):** no Apple Developer account, so releases ship ad-hoc signed with the Gatekeeper workaround documented in the README and in each release's notes. Developer ID signing and notarization are deferred until an account exists; `scripts/build-app.sh` already accepts `SIGN_IDENTITY` for that day. Still open: a manual pass over AC-1…AC-9.
+- **M5 so far:** icon, unit tests (AC-10 passes), ad-hoc signed universal `.app`, DMG and release scripts (`scripts/release.sh`), and an in-app update check against GitHub Releases (part of F-6, without Sparkle). **Decision (2026-10-07):** no Apple Developer account, so releases ship ad-hoc signed with the Gatekeeper workaround documented in the README and in each release's notes. Developer ID signing and notarization are deferred until an account exists; `scripts/build-app.sh` already accepts `SIGN_IDENTITY` for that day.
+- **Manual acceptance pass (2026-10-07),** on the Xcode build with the widget, macOS 26, Max plan:
+
+  | AC | Result | Notes |
+  |---|---|---|
+  | AC-1 | Skipped | Would need `defaults delete`, wiping settings. Seen on first install. |
+  | AC-2 | Pass | Menu bar 26% vs `/usage` 27%. The app's last fetch was 4 min earlier; weekly 41/41 and Fable 57/57 match exactly. |
+  | AC-3 | Pass | Stored reset 02:49:59 vs claude.ai 2:49am. The countdown rounds minutes up and ticks every 30 s, so it can read up to about a minute ahead. |
+  | AC-4 | Pass | Widget showed the new value after ⌘R. |
+  | AC-5 | Pass | Offline greys the data with "Offline"; recovered by itself when Wi‑Fi came back. |
+  | AC-6 | Pass | After `/logout` the app asked to log in; no crash. |
+  | AC-7 | Pass | Exactly one notification; repeated ⌘R and widget refreshes added none (per-cycle tracking, FR-20). |
+  | AC-8 | Pass | No `sk-ant-` in the app's files, preferences, widget container or caches, nor in the last 2 h of the unified log. |
+  | AC-9 | Pass | 0.70% average, 11.3% peak, 60 samples every 10 s over 10 minutes with `ps`. Included Wi‑Fi toggling, refreshes and Settings, so true idle is lower. |
+
+  M5 is done apart from Developer ID signing and notarization (deferred, see above).
 
 ---
 
