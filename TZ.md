@@ -188,6 +188,7 @@ enum UsageState: Codable {
   2. macOS will ask for Keychain access. Choose "Always Allow".
   3. If you are not logged in, run `claude` in Terminal, then `/login`.
 - **FR-25:** Each error state from §7 has its own message and recovery action.
+- **FR-26:** In the popover, hovering a limit (the hero ring or a weekly row) highlights it with the tooltip "Click to copy as an image". Clicking any limit copies one card with all limits to the clipboard as PNG/TIFF, in the current appearance, and shows "Copied" briefly. The card holds the app name, "Plan Usage Limits · <plan>", one row per limit ("x% · resets …" plus meter) and the date and time it was made. Nothing else in the popover copies, and the desktop widget does not do this.
 
 ---
 

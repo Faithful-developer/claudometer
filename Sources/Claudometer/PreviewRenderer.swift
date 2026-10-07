@@ -48,6 +48,12 @@ enum PreviewRenderer {
                 write(image, scale: pixelScale, to: dir.appendingPathComponent("popover-\(name)\(suffix(sample)).png"))
             }
 
+            // The clipboard card from clicking a limit in the popover.
+            if let snapshot = store.state.snapshot,
+               let image = LimitImage.image(snapshot: snapshot, stale: store.state.isStale, now: Date(), colorScheme: name == "dark" ? .dark : .light) {
+                write(image, scale: LimitImage.scale, to: dir.appendingPathComponent("copy-\(name)\(suffix(sample)).png"))
+            }
+
             // Each Settings tab on its own, at the window's width. The TabView chrome is
             // system-drawn and not worth rendering.
             let tabs: [(String, AnyView)] = [
@@ -144,16 +150,6 @@ enum PreviewRenderer {
     }
 
     private static func write(_ image: NSImage, scale: CGFloat, to url: URL) {
-        let size = NSSize(width: image.size.width * scale, height: image.size.height * scale)
-        guard let rep = NSBitmapImageRep(
-            bitmapDataPlanes: nil, pixelsWide: Int(size.width), pixelsHigh: Int(size.height),
-            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
-        ) else { return }
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-        image.draw(in: NSRect(origin: .zero, size: size))
-        NSGraphicsContext.restoreGraphicsState()
-        try? rep.representation(using: .png, properties: [:])?.write(to: url)
+        try? LimitImage.pngData(image, scale: scale)?.write(to: url)
     }
 }

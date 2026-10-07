@@ -60,8 +60,12 @@ struct PopoverView: View {
             }
 
             if let hero {
-                HeroRow(window: hero, level: level(hero), stale: stale, now: now)
-                    .padding(.horizontal, 14).padding(.vertical, 8)
+                CopyableLimit { scheme in
+                    LimitImage.copy(snapshot: snapshot, stale: stale, now: now, colorScheme: scheme)
+                } content: {
+                    HeroRow(window: hero, level: level(hero), stale: stale, now: now)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 8)
             } else if store.state.error == nil {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
@@ -76,7 +80,11 @@ struct PopoverView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     SectionHeader(others.allSatisfy { $0.group == .weekly } ? "Weekly Limits" : "Limits")
                     ForEach(others) { window in
-                        LimitRow(window: window, level: level(window), stale: stale, now: now)
+                        CopyableLimit(bleedY: 4) { scheme in
+                            LimitImage.copy(snapshot: snapshot, stale: stale, now: now, colorScheme: scheme)
+                        } content: {
+                            LimitRow(window: window, level: level(window), stale: stale, now: now)
+                        }
                     }
                     if (snapshot?.windows ?? []).contains(where: { $0.elapsedFraction(now: now) != nil }) {
                         PaceLegend()
@@ -211,6 +219,96 @@ struct LimitRow: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Formatters.accessibilityLabel(window, level: level, stale: stale, now: now))
+    }
+}
+
+/// Makes a limit clickable: hover highlight and tooltip, click copies all limits as an image, then a
+/// short "Copied" confirmation. The highlight bleeds into the surrounding padding so the row's
+/// content doesn't move. Inert in preview renders.
+struct CopyableLimit<Content: View>: View {
+    /// Vertical bleed; the stacked weekly rows use 4 so neighbouring highlights keep a gap.
+    var bleedY: CGFloat = 5
+    let copy: (ColorScheme) -> Bool
+    @ViewBuilder let content: () -> Content
+    @StateObject private var feedback = CopyFeedback()
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.isPreviewRender) private var isPreviewRender
+
+    /// Same 9 pt label inset as `MenuRowLabel`, so highlights line up with the menu rows.
+    private let bleedX: CGFloat = 9
+
+    var body: some View {
+        if isPreviewRender {
+            content()
+        } else {
+            Button(action: run) {
+                // The confirmation replaces the row for a moment rather than overprinting its text.
+                content()
+                    .opacity(feedback.copied ? 0 : 1)
+                    .overlay {
+                        if feedback.copied {
+                            HStack(spacing: 4) {
+                                Image(systemName: "checkmark")
+                                Text("Copied as image")
+                            }
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Ink.secondary)
+                            .transition(.opacity)
+                        }
+                    }
+                    .padding(.horizontal, bleedX).padding(.vertical, bleedY)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(CopyableLimitStyle())
+            .help("Click to copy as an image")
+            .accessibilityAction(named: "Copy as image", run)
+            .padding(.horizontal, -bleedX).padding(.vertical, -bleedY)
+        }
+    }
+
+    private func run() {
+        guard copy(colorScheme) else { NSSound.beep(); return }
+        feedback.flash()
+        AccessibilityNotification.Announcement("Copied as image").post()
+    }
+}
+
+/// Hover and pressed tints of `MenuRowStyle`, without its outer inset (the limit sections
+/// already provide it).
+struct CopyableLimitStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        CopyableLimitBody(configuration: configuration)
+    }
+
+    private struct CopyableLimitBody: View {
+        let configuration: ButtonStyleConfiguration
+        @StateObject private var hover = HoverState()
+
+        var body: some View {
+            configuration.label
+                .background {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(hover.isOn ? (configuration.isPressed ? Palette.coral.opacity(0.25) : Palette.coralSoft) : Color.clear)
+                }
+                .onHover { hover.isOn = $0 }
+        }
+    }
+}
+
+/// Drives the "Copied" confirmation; an object for the same reason as `HoverState`.
+@MainActor
+final class CopyFeedback: ObservableObject {
+    @Published var copied = false
+    private var reset: Task<Void, Never>?
+
+    func flash() {
+        reset?.cancel()
+        withAnimation(.easeOut(duration: 0.15)) { copied = true }
+        reset = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1.5))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.3)) { self?.copied = false }
+        }
     }
 }
 
