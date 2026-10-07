@@ -375,13 +375,14 @@ Stale data (E-3 to E-6) is still displayed but greyed out, with a "Showing data 
 | M4 | **Settings & notifications** | Settings window, launch at login, notifications, onboarding | FR-19…FR-25 work |
 | M5 | **Polish & release** | Accessibility, app icon, unit tests, signing, notarization, DMG | §9 acceptance criteria all pass |
 
-**Status (2026-10-06):**
+**Status (2026-10-07):**
 - **Done:**
   - M1.
   - M2: built with SwiftPM, live data verified.
+  - M3: widget extension builds with Xcode and no signing team (`scripts/build-xcode.sh`). AC-4 still needs a check on a real Mac.
   - M4: written; notifications and launch at login need the bundled `.app`.
-- **M3:** widget code is written and typechecks against the SDK. It still needs Xcode and a Team ID to build (`project.yml`).
-- **M5 so far:** icon, unit tests, ad-hoc signed universal `.app` and DMG script. Developer ID signing and notarization are still open.
+  - F-1: claude.ai session key fallback (§2.3).
+- **M5 so far:** icon, unit tests (AC-10 passes), ad-hoc signed universal `.app`, DMG and release scripts (`scripts/release.sh`), and an in-app update check against GitHub Releases (part of F-6, without Sparkle). Still open: Developer ID signing, notarization, and a manual pass over AC-1…AC-9.
 
 ---
 

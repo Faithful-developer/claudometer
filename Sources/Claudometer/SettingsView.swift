@@ -105,15 +105,22 @@ private struct NotificationSettings: View {
                     Text("Available when running the bundled Claudometer.app.").foregroundStyle(.secondary)
                 }
             }
-            Section("Alerts") {
-                Stepper("First alert at \(notifyLow)%", value: $notifyLow, in: 50...99, step: 5)
-                Stepper("Second alert at \(notifyHigh)%", value: $notifyHigh, in: 50...100, step: 5)
+            Section {
+                ThresholdSlider(title: "First alert", symbol: "bell.fill", tint: Palette.warningGlyph, value: percent($notifyLow), range: 50...95)
+                ThresholdSlider(title: "Second alert", symbol: "bell.badge.fill", tint: Palette.criticalGlyph, value: percent($notifyHigh), range: 50...100)
                 Toggle("Notify when a limit resets", isOn: $notifyReset)
+            } header: {
+                Text("Alerts")
+            } footer: {
+                Text("Each alert fires at most once per limit until that limit resets.")
+                    .foregroundStyle(.secondary)
             }
             .disabled(!notificationsEnabled)
         }
         .formStyle(.grouped)
         .fixedSize(horizontal: false, vertical: true)
+        // Older builds allowed a first alert up to 99%; pull it back into the slider's range.
+        .onAppear { notifyLow = min(notifyLow, 95) }
         .onChange(of: notifyLow) { if notifyHigh < notifyLow { notifyHigh = notifyLow } }
         .onChange(of: notifyHigh) { if notifyLow > notifyHigh { notifyLow = notifyHigh } }
         .onChange(of: notificationsEnabled) { _, enabled in
@@ -122,6 +129,11 @@ private struct NotificationSettings: View {
                 if !(await NotificationManager.requestAuthorization()) { notificationsEnabled = false }
             }
         }
+    }
+
+    /// Alert levels are stored as whole percents; the slider works in `Double`.
+    private func percent(_ value: Binding<Int>) -> Binding<Double> {
+        Binding(get: { Double(value.wrappedValue) }, set: { value.wrappedValue = Int($0.rounded()) })
     }
 }
 
