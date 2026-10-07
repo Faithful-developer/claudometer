@@ -12,10 +12,16 @@ final class NotificationManager {
 
     init() {
         let d = UserDefaults.standard
-        tracker = ThresholdTracker(
-            fired: Set(d.stringArray(forKey: SettingsKey.firedNotifications) ?? []),
-            nearLimit: Set(d.stringArray(forKey: SettingsKey.nearLimitWindows) ?? [])
-        )
+        if let data = d.data(forKey: SettingsKey.notificationCycles),
+           let saved = try? JSONDecoder().decode(ThresholdTracker.self, from: data) {
+            tracker = saved
+        } else {
+            // State of builds before per-cycle tracking; carried over so nothing fires again.
+            tracker = ThresholdTracker(
+                legacyFired: Set(d.stringArray(forKey: SettingsKey.legacyFiredNotifications) ?? []),
+                nearLimit: Set(d.stringArray(forKey: SettingsKey.legacyNearLimitWindows) ?? [])
+            )
+        }
     }
 
     static func requestAuthorization() async -> Bool {
@@ -32,27 +38,35 @@ final class NotificationManager {
         )
         persist()
         guard settings.notificationsEnabled, Self.isAvailable else { return }
-        for event in events { send(event) }
+        for event in events { send(event, lowerThreshold: settings.notifyLow) }
     }
 
-    private func send(_ event: ThresholdTracker.Event) {
+    /// Identifiers are per window and threshold, so a repeat replaces the banner instead of
+    /// stacking a second one.
+    private func send(_ event: ThresholdTracker.Event, lowerThreshold: Int) {
+        let center = UNUserNotificationCenter.current()
         let content = UNMutableNotificationContent()
+        let identifier: String
         switch event {
         case .crossed(let window, let threshold):
             content.title = "\(window.title): \(Formatters.percent(window.utilization)) used"
             content.body = "Passed \(threshold)%. \(Formatters.resetText(window.resetsAt))."
             content.sound = threshold >= 95 ? .default : nil
+            identifier = "\(window.id)|\(threshold)"
+            // The second alert supersedes the first one still sitting in Notification Center.
+            if threshold > lowerThreshold { center.removeDeliveredNotifications(withIdentifiers: ["\(window.id)|\(lowerThreshold)"]) }
         case .reset(let window):
             content.title = "\(window.title) has reset"
             content.body = "You're back to \(Formatters.percent(window.utilization)) used."
+            identifier = "\(window.id)|reset"
         }
-        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request)
+        center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
     }
 
     private func persist() {
         let d = UserDefaults.standard
-        d.set(Array(tracker.fired), forKey: SettingsKey.firedNotifications)
-        d.set(Array(tracker.nearLimit), forKey: SettingsKey.nearLimitWindows)
+        if let data = try? JSONEncoder().encode(tracker) { d.set(data, forKey: SettingsKey.notificationCycles) }
+        d.removeObject(forKey: SettingsKey.legacyFiredNotifications)
+        d.removeObject(forKey: SettingsKey.legacyNearLimitWindows)
     }
 }

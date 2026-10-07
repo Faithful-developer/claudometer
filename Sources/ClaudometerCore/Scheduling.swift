@@ -42,20 +42,56 @@ public enum Backoff {
 }
 
 /// Decides which threshold notifications to send, once per window per reset cycle (TZ FR-20, FR-21).
-public struct ThresholdTracker: Sendable {
+///
+/// A cycle is identified by the window's reset time, compared with a tolerance: the API
+/// computes `resets_at` per request, so it drifts by fractions of a second (and across minute
+/// boundaries) between fetches without the limit having reset.
+public struct ThresholdTracker: Codable, Sendable {
     public enum Event: Hashable, Sendable {
         case crossed(window: LimitWindow, threshold: Int)
         case reset(window: LimitWindow)
     }
 
-    /// Keys already notified, e.g. `session|2026-10-06T12:19:59Z|80`.
-    public private(set) var fired: Set<String>
-    /// Windows that were at or above the top threshold, by id.
-    public private(set) var nearLimit: Set<String>
+    /// What has been notified for one window in its current cycle.
+    public struct Cycle: Codable, Hashable, Sendable {
+        public var resetsAt: Date?
+        public var fired: Set<Int>
+        /// Reached the top threshold this cycle, so its rollover gets a "has reset" alert.
+        public var nearLimit: Bool
 
-    public init(fired: Set<String> = [], nearLimit: Set<String> = []) {
-        self.fired = fired
-        self.nearLimit = nearLimit
+        public init(resetsAt: Date?, fired: Set<Int> = [], nearLimit: Bool = false) {
+            self.resetsAt = resetsAt
+            self.fired = fired
+            self.nearLimit = nearLimit
+        }
+    }
+
+    /// Reset times closer than this belong to the same cycle. Real resets move it by 5 h or 7 d.
+    public static let cycleTolerance: TimeInterval = 15 * 60
+
+    /// By window id.
+    public private(set) var cycles: [String: Cycle]
+
+    public init(cycles: [String: Cycle] = [:]) {
+        self.cycles = cycles
+    }
+
+    /// Migrates the state of older builds: keys like `session|29999999|80` (reset time in whole
+    /// minutes) and the ids of windows that were near their limit.
+    public init(legacyFired: Set<String>, nearLimit: Set<String>) {
+        var cycles: [String: Cycle] = [:]
+        for key in legacyFired {
+            let parts = key.split(separator: "|", omittingEmptySubsequences: false)
+            guard parts.count == 3, let threshold = Int(parts[2]) else { continue }
+            let resetsAt = Double(parts[1]).map { Date(timeIntervalSince1970: $0 * 60) }
+            let id = String(parts[0])
+            var cycle = cycles[id] ?? Cycle(resetsAt: resetsAt)
+            if let resetsAt, resetsAt > (cycle.resetsAt ?? .distantPast) { cycle.resetsAt = resetsAt }
+            cycle.fired.insert(threshold)
+            cycles[id] = cycle
+        }
+        for id in nearLimit { cycles[id]?.nearLimit = true }
+        self.cycles = cycles
     }
 
     public mutating func evaluate(_ snapshot: UsageSnapshot, thresholds: [Int], notifyReset: Bool) -> [Event] {
@@ -64,38 +100,43 @@ public struct ThresholdTracker: Sendable {
         let top = sorted.last ?? 100
 
         for window in snapshot.windows {
-            let cycle = window.resetsAt.map { String(Int($0.timeIntervalSince1970 / 60)) } ?? "none"
-            // Highest threshold crossed only — no double notification when jumping 70 → 97.
-            if let threshold = sorted.last(where: { window.utilization >= Double($0) }) {
-                let key = "\(window.id)|\(cycle)|\(threshold)"
-                if !fired.contains(key) {
-                    fired.insert(key)
-                    // Mark lower thresholds as fired too.
-                    for lower in sorted where lower < threshold { fired.insert("\(window.id)|\(cycle)|\(lower)") }
-                    events.append(.crossed(window: window, threshold: threshold))
-                }
+            var cycle = cycles[window.id] ?? Cycle(resetsAt: window.resetsAt)
+            if Self.isNewCycle(from: cycle.resetsAt, to: window.resetsAt) {
+                if cycle.nearLimit, notifyReset { events.append(.reset(window: window)) }
+                cycle = Cycle(resetsAt: window.resetsAt)
+            } else if let resetsAt = window.resetsAt {
+                cycle.resetsAt = resetsAt
             }
 
-            if window.utilization >= Double(top) {
-                nearLimit.insert(window.id)
-            } else if nearLimit.contains(window.id), window.utilization < Double(sorted.first ?? top) {
-                nearLimit.remove(window.id)
-                if notifyReset { events.append(.reset(window: window)) }
+            // Highest threshold crossed only — no double notification when jumping 70 → 97.
+            if let threshold = sorted.last(where: { window.utilization >= Double($0) }), !cycle.fired.contains(threshold) {
+                // Mark lower thresholds as fired too.
+                cycle.fired.formUnion(sorted.filter { $0 <= threshold })
+                events.append(.crossed(window: window, threshold: threshold))
             }
+            if window.utilization >= Double(top) { cycle.nearLimit = true }
+            cycles[window.id] = cycle
         }
-        pruneOldKeys(keep: snapshot)
+        prune(keeping: snapshot)
         return events
     }
 
-    /// Drop keys of cycles that no longer exist so the set does not grow forever.
-    private mutating func pruneOldKeys(keep snapshot: UsageSnapshot) {
-        let live = Set(snapshot.windows.map { w in
-            "\(w.id)|" + (w.resetsAt.map { String(Int($0.timeIntervalSince1970 / 60)) } ?? "none")
-        })
-        fired = fired.filter { key in
-            let parts = key.split(separator: "|")
-            guard parts.count == 3 else { return false }
-            return live.contains("\(parts[0])|\(parts[1])")
+    /// A different reset time, or a window that ended ("Not started") or started.
+    static func isNewCycle(from stored: Date?, to current: Date?) -> Bool {
+        switch (stored, current) {
+        case (nil, nil): return false
+        case let (stored?, current?): return abs(current.timeIntervalSince(stored)) > cycleTolerance
+        default: return true
+        }
+    }
+
+    /// Forgets windows that are gone and whose cycle has ended. A window missing from a single
+    /// response keeps its record, so it does not notify again when it comes back.
+    private mutating func prune(keeping snapshot: UsageSnapshot) {
+        let live = Set(snapshot.windows.map(\.id))
+        let cutoff = snapshot.fetchedAt.addingTimeInterval(-Self.cycleTolerance)
+        cycles = cycles.filter { id, cycle in
+            live.contains(id) || (cycle.resetsAt.map { $0 > cutoff } ?? false)
         }
     }
 }

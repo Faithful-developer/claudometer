@@ -168,8 +168,8 @@ enum UsageState: Codable {
 
 ### 3.5 Notifications
 - **FR-19:** Optional local notifications through `UserNotifications`. They are off until the user enables them.
-- **FR-20:** The alert thresholds default to **80%** and **95%**. Each threshold fires **once per window per reset cycle**, keyed by `kind + resetsAt`.
-- **FR-21:** An optional "Limit reset" notification fires when a window that was at or above 95% goes back to a low value.
+- **FR-20:** The alert thresholds default to **80%** and **95%**. Each threshold fires **once per window per reset cycle**. A cycle is the window id plus its `resetsAt`, compared with a 15-minute tolerance, because the API's reset time drifts by fractions of a second between requests. Refreshing (⌘R, the widget's button, a restart) never repeats an alert, and a window missing from one response keeps its state. Notification identifiers are per window and threshold, so a repeat would replace the banner rather than stack.
+- **FR-21:** An optional "Limit reset" notification fires once when a window that reached the top threshold rolls over to a new cycle (its reset time moves on, or the window ends). A dip in usage within the same cycle does not count.
 
 ### 3.6 Settings window
 - **FR-22:** Settings:

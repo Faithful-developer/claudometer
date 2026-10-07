@@ -169,6 +169,61 @@ private func json(_ string: String) -> Data { Data(string.utf8) }
         if case .reset = afterReset.first {} else { Issue.record("expected reset event") }
         #expect(tracker.evaluate(snapshot(81, resetsAt: next), thresholds: [80, 95], notifyReset: true).count == 1)
     }
+
+    /// The API computes `resets_at` per request; fractions of a second across a minute
+    /// boundary used to read as a new cycle and repeat the alert.
+    @Test func resetTimeJitterIsSameCycle() {
+        var tracker = ThresholdTracker()
+        let before = Date(timeIntervalSince1970: 1_799_999_999.6)  // hh:mm:59.6
+        let after = Date(timeIntervalSince1970: 1_800_000_000.1)   // next minute
+        #expect(tracker.evaluate(snapshot(81, resetsAt: before), thresholds: [80, 95], notifyReset: true).count == 1)
+        #expect(tracker.evaluate(snapshot(81, resetsAt: after), thresholds: [80, 95], notifyReset: true).isEmpty)
+        #expect(tracker.evaluate(snapshot(82, resetsAt: before), thresholds: [80, 95], notifyReset: true).isEmpty)
+    }
+
+    @Test func missingWindowDoesNotRefire() {
+        var tracker = ThresholdTracker()
+        let fable = LimitWindow(id: "weekly_scoped:Fable", group: .weekly, title: "Weekly · Fable", utilization: 85, resetsAt: reset)
+        let session = snapshot(10).windows[0]
+        #expect(tracker.evaluate(UsageSnapshot(windows: [session, fable]), thresholds: [80, 95], notifyReset: true).count == 1)
+        #expect(tracker.evaluate(UsageSnapshot(windows: [session]), thresholds: [80, 95], notifyReset: true).isEmpty)
+        #expect(tracker.evaluate(UsageSnapshot(windows: [session, fable]), thresholds: [80, 95], notifyReset: true).isEmpty)
+    }
+
+    /// "Has reset" means the limit rolled over, not that usage dipped.
+    @Test func resetOnlyOnRollover() {
+        var tracker = ThresholdTracker()
+        _ = tracker.evaluate(snapshot(96), thresholds: [80, 95], notifyReset: true)
+        #expect(tracker.evaluate(snapshot(70), thresholds: [80, 95], notifyReset: true).isEmpty)
+        let next = reset.addingTimeInterval(5 * 3600)
+        #expect(tracker.evaluate(snapshot(2, resetsAt: next), thresholds: [80, 95], notifyReset: true).count == 1)
+        #expect(tracker.evaluate(snapshot(2, resetsAt: next), thresholds: [80, 95], notifyReset: true).isEmpty)
+    }
+
+    @Test func endedWindowCountsAsReset() {
+        var tracker = ThresholdTracker()
+        _ = tracker.evaluate(snapshot(96), thresholds: [80, 95], notifyReset: true)
+        let ended = UsageSnapshot(windows: [LimitWindow(id: "session", group: .session, title: "Session", utilization: 0, resetsAt: nil)])
+        let events = tracker.evaluate(ended, thresholds: [80, 95], notifyReset: true)
+        #expect(events.count == 1)
+        if case .reset = events.first {} else { Issue.record("expected reset event") }
+    }
+
+    @Test func codableRoundTrip() throws {
+        var tracker = ThresholdTracker()
+        _ = tracker.evaluate(snapshot(96), thresholds: [80, 95], notifyReset: true)
+        var restored = try JSONDecoder().decode(ThresholdTracker.self, from: JSONEncoder().encode(tracker))
+        #expect(restored.evaluate(snapshot(97), thresholds: [80, 95], notifyReset: true).isEmpty)
+    }
+
+    /// Keys written by older builds carry over, so updating does not repeat today's alerts.
+    @Test func migratesLegacyKeys() {
+        let minute = Int(reset.timeIntervalSince1970 / 60)
+        var tracker = ThresholdTracker(legacyFired: ["session|\(minute)|80", "session|\(minute)|95"], nearLimit: ["session"])
+        #expect(tracker.evaluate(snapshot(96), thresholds: [80, 95], notifyReset: true).isEmpty)
+        let next = reset.addingTimeInterval(5 * 3600)
+        #expect(tracker.evaluate(snapshot(1, resetsAt: next), thresholds: [80, 95], notifyReset: true).count == 1)
+    }
 }
 
 @Suite struct StoreTests {

@@ -15,8 +15,11 @@ enum SettingsKey {
     static let notifyLow = "notifyLow"
     static let notifyHigh = "notifyHigh"
     static let notifyReset = "notifyReset"
-    static let firedNotifications = "firedNotifications"
-    static let nearLimitWindows = "nearLimitWindows"
+    /// `ThresholdTracker` as JSON.
+    static let notificationCycles = "notificationCycles"
+    /// Replaced by `notificationCycles`; read once to migrate, then removed.
+    static let legacyFiredNotifications = "firedNotifications"
+    static let legacyNearLimitWindows = "nearLimitWindows"
 }
 
 struct AppSettings {
