@@ -2,7 +2,7 @@ import AppKit
 import ClaudometerCore
 import SwiftUI
 
-/// `Claudometer --render-previews <dir>` writes PNGs of the menu bar icon and popover using
+/// `Claudometer --render-previews <dir>` writes PNGs of the menu bar icon, popover, widgets and Settings tabs using
 /// the cached usage state, then exits. Used for docs screenshots and visual checks without
 /// screen-recording permission.
 @MainActor
@@ -48,6 +48,24 @@ enum PreviewRenderer {
                 write(image, scale: pixelScale, to: dir.appendingPathComponent("popover-\(name)\(suffix(sample)).png"))
             }
 
+            // Each Settings tab on its own, at the window's width. The TabView chrome is
+            // system-drawn and not worth rendering.
+            let tabs: [(String, AnyView)] = [
+                ("general", AnyView(GeneralSettings())),
+                ("notifications", AnyView(NotificationSettings())),
+                ("login", AnyView(LoginSettings())),
+                ("about", AnyView(AboutSettings())),
+            ]
+            for (tab, content) in tabs {
+                let page = content
+                    .environment(store)
+                    .environment(UpdateStore())
+                    .background(Palette.canvas)
+                if let image = snapshot(page, width: 460, appearance: appearance) {
+                    write(image, scale: pixelScale, to: dir.appendingPathComponent("settings-\(tab)-\(name)\(suffix(sample)).png"))
+                }
+            }
+
             let settings = AppSettings.current
             let style = WidgetStyle(metric: settings.menuBarMetric, warning: settings.warningThreshold, critical: settings.criticalThreshold)
             for size in WidgetSize.allCases {
@@ -75,6 +93,37 @@ enum PreviewRenderer {
     private static let pixelScale: CGFloat = 3
 
     private static func suffix(_ sample: String?) -> String { sample.map { "-\($0)" } ?? "" }
+
+    /// `ImageRenderer` draws only pure SwiftUI; grouped forms, sliders, pickers and buttons are
+    /// AppKit-backed and come out blank. Hosting the view in an offscreen window and caching its
+    /// display draws them properly, without needing the window on screen.
+    private static func snapshot<V: View>(_ view: V, width: CGFloat, appearance: NSAppearance.Name) -> NSImage? {
+        let hosting = NSHostingView(rootView: view.frame(width: width))
+        hosting.sizingOptions = .intrinsicContentSize
+        hosting.frame = NSRect(x: 0, y: 0, width: width, height: 10)
+        let window = NSWindow(contentRect: hosting.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: appearance)
+        window.contentView = hosting
+        hosting.layoutSubtreeIfNeeded()
+        let height = hosting.intrinsicContentSize.height
+        window.setContentSize(NSSize(width: width, height: height))
+        hosting.frame = NSRect(x: 0, y: 0, width: width, height: height)
+        // Give SwiftUI a run loop turn to settle layout of the hosted controls.
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        hosting.layoutSubtreeIfNeeded()
+
+        let bounds = hosting.bounds
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: Int(bounds.width * pixelScale), pixelsHigh: Int(bounds.height * pixelScale),
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        ) else { return nil }
+        rep.size = bounds.size
+        hosting.cacheDisplay(in: bounds, to: rep)
+        let image = NSImage(size: bounds.size)
+        image.addRepresentation(rep)
+        return image
+    }
 
     private static var highSample: UsageState {
         let now = Date()

@@ -21,7 +21,7 @@ struct SettingsView: View {
     }
 }
 
-private struct GeneralSettings: View {
+struct GeneralSettings: View {
     @Environment(UsageStore.self) private var store
     @AppStorage(SettingsKey.appearance) private var appearance = AppAppearance.system.rawValue
     @AppStorage(SettingsKey.refreshMinutes) private var refreshMinutes = 5
@@ -90,7 +90,7 @@ private struct GeneralSettings: View {
     }
 }
 
-private struct NotificationSettings: View {
+struct NotificationSettings: View {
     @AppStorage(SettingsKey.notificationsEnabled) private var notificationsEnabled = false
     @AppStorage(SettingsKey.notifyLow) private var notifyLow = 80
     @AppStorage(SettingsKey.notifyHigh) private var notifyHigh = 95
@@ -138,7 +138,7 @@ private struct NotificationSettings: View {
 }
 
 /// Data source and the claude.ai session key backup (TZ §2.3).
-private struct LoginSettings: View {
+struct LoginSettings: View {
     @Environment(UsageStore.self) private var store
     @StateObject private var model = SessionKeyModel()
 
@@ -241,7 +241,7 @@ final class SessionKeyModel: ObservableObject {
     }
 }
 
-private struct AboutSettings: View {
+struct AboutSettings: View {
     @Environment(UpdateStore.self) private var updates
 
     var body: some View {
