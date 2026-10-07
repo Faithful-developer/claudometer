@@ -382,7 +382,7 @@ Stale data (E-3 to E-6) is still displayed but greyed out, with a "Showing data 
   - M3: widget extension builds with Xcode and no signing team (`scripts/build-xcode.sh`). AC-4 still needs a check on a real Mac.
   - M4: written; notifications and launch at login need the bundled `.app`.
   - F-1: claude.ai session key fallback (§2.3).
-- **M5 so far:** icon, unit tests (AC-10 passes), ad-hoc signed universal `.app`, DMG and release scripts (`scripts/release.sh`), and an in-app update check against GitHub Releases (part of F-6, without Sparkle). Still open: Developer ID signing, notarization, and a manual pass over AC-1…AC-9.
+- **M5 so far:** icon, unit tests (AC-10 passes), ad-hoc signed universal `.app`, DMG and release scripts (`scripts/release.sh`), and an in-app update check against GitHub Releases (part of F-6, without Sparkle). **Decision (2026-10-07):** no Apple Developer account, so releases ship ad-hoc signed with the Gatekeeper workaround documented in the README and in each release's notes. Developer ID signing and notarization are deferred until an account exists; `scripts/build-app.sh` already accepts `SIGN_IDENTITY` for that day. Still open: a manual pass over AC-1…AC-9.
 
 ---
 

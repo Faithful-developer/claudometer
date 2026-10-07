@@ -45,10 +45,17 @@ The full specification is in [TZ.md](TZ.md).
 
 Building it yourself (below) is the most transparent option. Prebuilt, ad-hoc signed builds are also available:
 
-
 Download the latest `Claudometer-x.y.z.dmg` from [Releases](https://github.com/Faithful-developer/claudometer/releases) and drag the app to Applications.
-It isn't signed with an Apple Developer ID or notarized, so macOS blocks the first launch: open **System Settings → Privacy & Security** and click **Open Anyway**.
 Claudometer checks for new releases once a day and shows **Update Available** in the menu; *Settings → About* has **Check for Updates**.
+
+### "Claudometer can't be opened" on first launch
+
+The prebuilt app is not signed with an Apple Developer ID and not notarized (that needs a paid developer account, which this project doesn't have), so Gatekeeper blocks it the first time. Either:
+
+1. Try to open the app once, then go to **System Settings → Privacy & Security**, scroll down to the message about Claudometer and click **Open Anyway**. Confirm with your password or Touch ID. Only needed once per version.
+2. Or clear the quarantine flag in Terminal: `xattr -dr com.apple.quarantine /Applications/Claudometer.app`
+
+Updates downloaded from Releases go through the same step. If you'd rather not trust a prebuilt binary, build it yourself below: the build is ad-hoc signed on your Mac, so Gatekeeper never asks.
 
 ## Build & run (no Xcode needed)
 
