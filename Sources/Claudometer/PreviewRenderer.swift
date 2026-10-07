@@ -18,6 +18,7 @@ enum PreviewRenderer {
         let initial: UsageState?
         switch sample {
         case "high": initial = highSample
+        case "rings": initial = ringsSample
         case "stale": initial = UsageState(snapshot: highSample.snapshot, error: .offline)
         case "signedout": initial = UsageState(error: .notSignedIn)
         default: initial = nil
@@ -25,15 +26,18 @@ enum PreviewRenderer {
         let store = UsageStore(markCachedStale: false, initialState: initial)
         for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
             NSAppearance(named: appearance)?.performAsCurrentDrawingAppearance {
-                let window = store.state.snapshot?.window(for: AppSettings.current.menuBarMetric)
-                let icon = MenuBarIcon.image(
-                    utilization: window?.utilization,
-                    level: AppSettings.current.level(for: window?.utilization),
-                    stale: false,
-                    compact: false,
-                    resetsAt: window?.resetsAt
-                )
-                write(icon, scale: 4, to: dir.appendingPathComponent("menubar-\(name)\(suffix(sample)).png"))
+                let settings = AppSettings.current
+                let window = store.state.snapshot?.window(for: settings.menuBarMetric)
+                let extras = settings.menuBarExtraRings ? store.state.snapshot?.highWindows(excluding: window, from: settings.menuBarExtraThreshold) ?? [] : []
+                for compact in [false, true] {
+                    let icon = MenuBarIcon.image(
+                        primary: MenuBarIcon.Ring(window: window, level: settings.level(for: window?.utilization)),
+                        extras: extras.map { MenuBarIcon.Ring(window: $0, level: settings.level(for: $0.utilization), letter: true) },
+                        stale: false,
+                        compact: compact
+                    )
+                    write(icon, scale: 4, to: dir.appendingPathComponent("menubar\(compact ? "-compact" : "")-\(name)\(suffix(sample)).png"))
+                }
             }
 
             let view = PopoverView()
@@ -146,6 +150,20 @@ enum PreviewRenderer {
             ],
             plan: "pro",
             fetchedAt: now.addingTimeInterval(-120)
+        ))
+    }
+
+    /// Two other limits at 80%: the menu bar shows three rings.
+    private static var ringsSample: UsageState {
+        let now = Date()
+        return UsageState(snapshot: UsageSnapshot(
+            windows: [
+                LimitWindow(id: "session", group: .session, title: "Session (5h)", utilization: 50, resetsAt: now.addingTimeInterval(3 * 3600)),
+                LimitWindow(id: "weekly_all", group: .weekly, title: "Weekly · all models", utilization: 80, resetsAt: now.addingTimeInterval(2 * 86400)),
+                LimitWindow(id: "weekly_scoped:Fable", group: .weekly, title: "Weekly · Fable", utilization: 88, resetsAt: now.addingTimeInterval(2 * 86400)),
+            ],
+            plan: "max",
+            fetchedAt: now.addingTimeInterval(-60)
         ))
     }
 

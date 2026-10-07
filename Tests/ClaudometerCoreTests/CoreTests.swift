@@ -226,6 +226,29 @@ private func json(_ string: String) -> Data { Data(string.utf8) }
     }
 }
 
+@Suite struct ExtraRingTests {
+    let snapshot = UsageSnapshot(windows: [
+        LimitWindow(id: "session", group: .session, title: "Session (5h)", utilization: 50, resetsAt: nil),
+        LimitWindow(id: "weekly_all", group: .weekly, title: "Weekly · all models", utilization: 80, resetsAt: nil),
+        LimitWindow(id: "weekly_scoped:Fable", group: .weekly, title: "Weekly · Fable", utilization: 60, resetsAt: nil),
+    ])
+
+    @Test func picksHighNonPrimaryWindows() {
+        let primary = snapshot.window(for: .session)
+        #expect(snapshot.highWindows(excluding: primary, from: 80).map(\.id) == ["weekly_all"])
+        #expect(snapshot.highWindows(excluding: primary, from: 60).map(\.id) == ["weekly_all", "weekly_scoped:Fable"])
+        // The primary never repeats as an extra ring; highest comes first.
+        #expect(snapshot.highWindows(excluding: snapshot.window(for: .weekly), from: 50).map(\.id) == ["weekly_scoped:Fable", "session"])
+        #expect(snapshot.highWindows(excluding: nil, from: 0).count == 2)
+    }
+
+    /// Session is a digit so a weekly Sonnet limit ("S") can't be mistaken for it.
+    @Test func badgeLetters() {
+        let sonnet = LimitWindow(id: "weekly_scoped:Sonnet", group: .weekly, title: "Weekly · Sonnet", utilization: 0, resetsAt: nil)
+        #expect((snapshot.windows + [sonnet]).map(\.badgeLetter) == ["5", "W", "F", "S"])
+    }
+}
+
 @Suite struct StoreTests {
     @Test func roundTrip() throws {
         let url = FileManager.default.temporaryDirectory

@@ -9,6 +9,8 @@ enum SettingsKey {
     static let appearance = "appearance"
     static let menuBarMetric = "menuBarMetric"
     static let compactMenuBar = "compactMenuBar"
+    static let menuBarExtraRings = "menuBarExtraRings"
+    static let menuBarExtraThreshold = "menuBarExtraThreshold"
     static let warningThreshold = "warningThreshold"
     static let criticalThreshold = "criticalThreshold"
     static let notificationsEnabled = "notificationsEnabled"
@@ -26,6 +28,8 @@ struct AppSettings {
     var refreshMinutes: Int
     var menuBarMetric: MenuBarMetric
     var compactMenuBar: Bool
+    var menuBarExtraRings: Bool
+    var menuBarExtraThreshold: Double
     var warningThreshold: Double
     var criticalThreshold: Double
     var notificationsEnabled: Bool
@@ -38,6 +42,8 @@ struct AppSettings {
         SettingsKey.appearance: AppAppearance.system.rawValue,
         SettingsKey.menuBarMetric: MenuBarMetric.session.rawValue,
         SettingsKey.compactMenuBar: false,
+        SettingsKey.menuBarExtraRings: true,
+        SettingsKey.menuBarExtraThreshold: 80.0,
         SettingsKey.warningThreshold: 60.0,
         SettingsKey.criticalThreshold: 85.0,
         SettingsKey.notificationsEnabled: false,
@@ -56,6 +62,8 @@ struct AppSettings {
             refreshMinutes: min(max(d.integer(forKey: SettingsKey.refreshMinutes), 1), 30),
             menuBarMetric: MenuBarMetric(rawValue: d.string(forKey: SettingsKey.menuBarMetric) ?? "") ?? .session,
             compactMenuBar: d.bool(forKey: SettingsKey.compactMenuBar),
+            menuBarExtraRings: d.bool(forKey: SettingsKey.menuBarExtraRings),
+            menuBarExtraThreshold: d.double(forKey: SettingsKey.menuBarExtraThreshold),
             warningThreshold: d.double(forKey: SettingsKey.warningThreshold),
             criticalThreshold: d.double(forKey: SettingsKey.criticalThreshold),
             notificationsEnabled: d.bool(forKey: SettingsKey.notificationsEnabled),

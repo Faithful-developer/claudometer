@@ -43,19 +43,25 @@ struct MenuBarLabel: View {
     let store: UsageStore
     @AppStorage(SettingsKey.menuBarMetric) private var metric = MenuBarMetric.session.rawValue
     @AppStorage(SettingsKey.compactMenuBar) private var compact = false
+    @AppStorage(SettingsKey.menuBarExtraRings) private var extraRings = true
+    @AppStorage(SettingsKey.menuBarExtraThreshold) private var extraThreshold = 80.0
     @AppStorage(SettingsKey.warningThreshold) private var warning = 60.0
     @AppStorage(SettingsKey.criticalThreshold) private var critical = 85.0
 
     var body: some View {
-        let window = store.state.snapshot?.window(for: MenuBarMetric(rawValue: metric) ?? .session)
-        let utilization = window?.utilization
+        let snapshot = store.state.snapshot
+        let window = snapshot?.window(for: MenuBarMetric(rawValue: metric) ?? .session)
+        let extras = extraRings ? snapshot?.highWindows(excluding: window, from: extraThreshold) ?? [] : []
         Image(nsImage: MenuBarIcon.image(
-            utilization: utilization,
-            level: UsageLevel.of(utilization, warning: warning, critical: critical),
+            primary: MenuBarIcon.Ring(window: window, level: level(window)),
+            extras: extras.map { MenuBarIcon.Ring(window: $0, level: level($0), letter: true) },
             stale: store.state.isStale || store.state.error != nil,
-            compact: compact,
-            resetsAt: window?.resetsAt
+            compact: compact
         ))
+    }
+
+    private func level(_ window: LimitWindow?) -> UsageLevel {
+        UsageLevel.of(window?.utilization, warning: warning, critical: critical)
     }
 }
 

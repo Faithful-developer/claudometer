@@ -69,6 +69,15 @@ public struct LimitWindow: Codable, Hashable, Identifiable, Sendable {
         if let range = title.range(of: " · ") { return String(title[range.upperBound...]) }
         return title
     }
+
+    /// One character for the menu bar ring: 5 for the 5-hour session, W for weekly (all
+    /// models), or the model's initial for model-scoped limits (F for Fable, S for Sonnet).
+    /// Session is a digit so it never collides with a model's initial.
+    public var badgeLetter: String {
+        if group == .session { return "5" }
+        if id == "weekly_all" { return "W" }
+        return shortTitle.first.map { String($0).uppercased() } ?? "?"
+    }
 }
 
 /// Share of the weekly usage by surface (Claude Code, Chats, …).
@@ -126,6 +135,15 @@ public struct UsageSnapshot: Codable, Hashable, Sendable {
         case .weekly: return weekly ?? highest
         case .highest: return highest
         }
+    }
+
+    /// Limits other than the menu bar's own that are high enough to get a ring of their own,
+    /// highest first, at most `limit` so the menu bar item stays narrow enough not to be hidden.
+    public func highWindows(excluding primary: LimitWindow?, from threshold: Double, limit: Int = 2) -> [LimitWindow] {
+        Array(windows
+            .filter { $0.id != primary?.id && $0.utilization >= threshold }
+            .sorted { $0.utilization > $1.utilization }
+            .prefix(limit))
     }
 
     public func withPlan(_ plan: String?) -> UsageSnapshot {

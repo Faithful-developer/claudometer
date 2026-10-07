@@ -27,6 +27,8 @@ struct GeneralSettings: View {
     @AppStorage(SettingsKey.refreshMinutes) private var refreshMinutes = 5
     @AppStorage(SettingsKey.menuBarMetric) private var metric = MenuBarMetric.session.rawValue
     @AppStorage(SettingsKey.compactMenuBar) private var compact = false
+    @AppStorage(SettingsKey.menuBarExtraRings) private var extraRings = true
+    @AppStorage(SettingsKey.menuBarExtraThreshold) private var extraThreshold = 80.0
     @AppStorage(SettingsKey.warningThreshold) private var warning = 60.0
     @AppStorage(SettingsKey.criticalThreshold) private var critical = 85.0
     @StateObject private var loginItem = LoginItem()
@@ -49,11 +51,19 @@ struct GeneralSettings: View {
                 }
             }
 
-            Section("Menu Bar") {
+            Section {
                 Picker("Show", selection: $metric) {
                     ForEach(MenuBarMetric.allCases) { Text($0.title).tag($0.rawValue) }
                 }
                 Toggle("Show percentage", isOn: Binding(get: { !compact }, set: { compact = !$0 }))
+                Toggle("Show rings for other high limits", isOn: $extraRings)
+                ThresholdSlider(title: "At or above", symbol: "circle.dotted", tint: Ink.secondary, value: $extraThreshold, range: 50...100)
+                    .disabled(!extraRings)
+            } header: {
+                Text("Menu Bar")
+            } footer: {
+                Text("Up to two other limits at or above this level get their own ring, marked 5 for the 5‑hour session, W for weekly, or the model’s initial, such as F for Fable.")
+                    .foregroundStyle(.secondary)
             }
 
             Section {
