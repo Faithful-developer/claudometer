@@ -139,7 +139,8 @@ enum UsageState: Codable {
   - red above 85%
   - grey when the data is stale or there is an error
 - **FR-5:** Optional "compact" mode shows the icon only, without the % text.
-- **FR-27:** Up to two other limits at or above a threshold (default **80%**, Settings › Menu Bar, can be turned off) get their own ring after the primary one, highest first. Each is marked so it's clear which limit it is: **5** for the 5-hour session, **W** for weekly (all models), or the model's initial (**F** Fable, **S** Sonnet, **O** Opus). The ring takes the limit's level colour, the mark is plain ink, and its percent follows unless compact mode is on. The cap keeps the item narrow enough that macOS doesn't hide it on notched displays. Example: session 50%, weekly 80%, Fable 88% → `◔ 50%  Ⓕ 88%  Ⓦ 80%`.
+- **FR-27:** Up to two other limits at or above a threshold (default **80%**, Settings › Menu Bar › Show other limits when high, can be turned off) get their own ring after the primary one and any added limits (FR-28), highest first. Limits already shown are skipped, and added limits count toward the two. Each is marked so it's clear which limit it is: **5** for the 5-hour session, **W** for weekly (all models), or the model's initial (**F** Fable, **S** Sonnet, **O** Opus). The ring takes the limit's level colour, the mark is plain ink, and its percent follows unless compact mode is on. The cap keeps the item narrow enough that macOS doesn't hide it on notched displays. Example: session 50%, weekly 80%, Fable 88% → `◔ 50%  Ⓕ 88%  Ⓦ 80%`.
+- **FR-28:** Up to two other limits can be added to the menu bar so they show all the time (Settings › Menu Bar › **Always show**, one checkbox per limit in the latest data; none by default). Each checkbox is labelled like the "Show" picker ("Weekly (all models)", "Weekly (Fable)") and carries the ring's mark as a plain ink outline, so it's clear which ring it adds; once two are ticked the others are disabled. Added limits get their marked ring after the primary one, in the usual order (session, weekly all models, then per model), whatever their level. A limit that is currently the primary one isn't repeated, and an added limit missing from the data (e.g. a model that's gone) is skipped. Example: session 26%, weekly 41% and Fable 57% added → `◔ 26%  Ⓦ 41%  Ⓕ 57%`.
 
 ### 3.2 Popover (click on the menu bar item)
 - **FR-6:** One row per limit window, each with:
@@ -176,8 +177,9 @@ enum UsageState: Codable {
 - **FR-22:** Settings:
   - **Refresh interval:** a stepper, 1–30 min
   - **Menu bar metric:** Session / Weekly / Highest
+  - **Always show (FR-28):** a checkbox for each other limit, up to two, none by default
   - **Compact menu bar:** on/off
-  - **Extra rings for other high limits (FR-27):** on/off and a threshold slider, 50–100%, default 80%
+  - **Show other limits when high (FR-27):** on/off and a threshold slider, 50–100%, default 80%
   - **Colour thresholds:** two sliders
   - **Notifications:** on/off and the thresholds
   - **Launch at login:** uses `SMAppService.mainApp`

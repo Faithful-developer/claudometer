@@ -234,18 +234,66 @@ private func json(_ string: String) -> Data { Data(string.utf8) }
     ])
 
     @Test func picksHighNonPrimaryWindows() {
-        let primary = snapshot.window(for: .session)
-        #expect(snapshot.highWindows(excluding: primary, from: 80).map(\.id) == ["weekly_all"])
-        #expect(snapshot.highWindows(excluding: primary, from: 60).map(\.id) == ["weekly_all", "weekly_scoped:Fable"])
-        // The primary never repeats as an extra ring; highest comes first.
-        #expect(snapshot.highWindows(excluding: snapshot.window(for: .weekly), from: 50).map(\.id) == ["weekly_scoped:Fable", "session"])
-        #expect(snapshot.highWindows(excluding: nil, from: 0).count == 2)
+        #expect(snapshot.highWindows(excluding: ["session"], from: 80).map(\.id) == ["weekly_all"])
+        #expect(snapshot.highWindows(excluding: ["session"], from: 60).map(\.id) == ["weekly_all", "weekly_scoped:Fable"])
+        // Limits already shown never repeat as an extra ring; highest comes first.
+        #expect(snapshot.highWindows(excluding: ["weekly_all"], from: 50).map(\.id) == ["weekly_scoped:Fable", "session"])
+        #expect(snapshot.highWindows(excluding: [], from: 0).count == 2)
     }
 
     /// Session is a digit so a weekly Sonnet limit ("S") can't be mistaken for it.
     @Test func badgeLetters() {
         let sonnet = LimitWindow(id: "weekly_scoped:Sonnet", group: .weekly, title: "Weekly · Sonnet", utilization: 0, resetsAt: nil)
         #expect((snapshot.windows + [sonnet]).map(\.badgeLetter) == ["5", "W", "F", "S"])
+    }
+}
+
+@Suite struct PinnedRingTests {
+    let snapshot = UsageSnapshot(windows: [
+        LimitWindow(id: "session", group: .session, title: "Session (5h)", utilization: 50, resetsAt: nil),
+        LimitWindow(id: "weekly_all", group: .weekly, title: "Weekly · all models", utilization: 40, resetsAt: nil),
+        LimitWindow(id: "weekly_scoped:Fable", group: .weekly, title: "Weekly · Fable", utilization: 90, resetsAt: nil),
+        LimitWindow(id: "weekly_scoped:Opus", group: .weekly, title: "Weekly · Opus", utilization: 85, resetsAt: nil),
+    ])
+
+    private func ids(_ metric: MenuBarMetric, _ pinned: [String], _ threshold: Double? = 80) -> [String] {
+        let rings = snapshot.menuBarWindows(metric: metric, pinned: pinned, extraThreshold: threshold)
+        return [rings.primary?.id ?? "-"] + rings.extras.map(\.id)
+    }
+
+    @Test func withoutPinsMatchesHighRings() {
+        #expect(ids(.session, []) == ["session", "weekly_scoped:Fable", "weekly_scoped:Opus"])
+        #expect(ids(.session, [], nil) == ["session"])
+    }
+
+    @Test func pinnedComeFirstInSnapshotOrder() {
+        #expect(ids(.session, ["weekly_scoped:Fable", "weekly_all"], nil) == ["session", "weekly_all", "weekly_scoped:Fable"])
+    }
+
+    /// A pinned limit isn't repeated as a high ring, and high rings only fill the two-ring cap.
+    @Test func highRingsShareTheCap() {
+        #expect(ids(.session, ["weekly_scoped:Fable"]) == ["session", "weekly_scoped:Fable", "weekly_scoped:Opus"])
+        #expect(ids(.session, ["weekly_all", "weekly_scoped:Fable"]) == ["session", "weekly_all", "weekly_scoped:Fable"])
+    }
+
+    @Test func skipsPrimaryAndUnknownPins() {
+        #expect(ids(.highest, ["weekly_scoped:Fable", "weekly_scoped:Gone"], nil) == ["weekly_scoped:Fable"])
+        #expect(ids(.weekly, ["weekly_all", "session"], nil) == ["weekly_all", "session"])
+    }
+
+    /// Stored pins beyond the cap are ignored, and there's no room left for high rings.
+    @Test func pinnedAreCapped() {
+        #expect(ids(.session, ["weekly_scoped:Opus", "weekly_scoped:Fable", "weekly_all"]) == ["session", "weekly_all", "weekly_scoped:Fable"])
+    }
+
+    @Test func settingsTitles() {
+        #expect(snapshot.windows.map(\.settingsTitle) == ["Session (5h)", "Weekly (all models)", "Weekly (Fable)", "Weekly (Opus)"])
+    }
+
+    @Test func pinsRoundTrip() {
+        #expect(MenuBarPins.decode("") == [])
+        let pins = ["weekly_all", "weekly_scoped:Fable"]
+        #expect(MenuBarPins.decode(MenuBarPins.encode(pins)) == pins)
     }
 }
 

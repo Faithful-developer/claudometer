@@ -70,6 +70,15 @@ public struct LimitWindow: Codable, Hashable, Identifiable, Sendable {
         return title
     }
 
+    /// Name in Settings, in the style of the "Show" picker: "Weekly (all models)", "Weekly (Fable)".
+    public var settingsTitle: String {
+        switch group {
+        case .session: return title
+        case .weekly: return "Weekly (\(id == "weekly_all" ? "all models" : shortTitle))"
+        case .other: return title
+        }
+    }
+
     /// One character for the menu bar ring: 5 for the 5-hour session, W for weekly (all
     /// models), or the model's initial for model-scoped limits (F for Fable, S for Sonnet).
     /// Session is a digit so it never collides with a model's initial.
@@ -137,13 +146,24 @@ public struct UsageSnapshot: Codable, Hashable, Sendable {
         }
     }
 
-    /// Limits other than the menu bar's own that are high enough to get a ring of their own,
+    /// Limits not already in the menu bar that are high enough to get a ring of their own,
     /// highest first, at most `limit` so the menu bar item stays narrow enough not to be hidden.
-    public func highWindows(excluding primary: LimitWindow?, from threshold: Double, limit: Int = 2) -> [LimitWindow] {
+    public func highWindows(excluding ids: Set<String>, from threshold: Double, limit: Int = 2) -> [LimitWindow] {
         Array(windows
-            .filter { $0.id != primary?.id && $0.utilization >= threshold }
+            .filter { !ids.contains($0.id) && $0.utilization >= threshold }
             .sorted { $0.utilization > $1.utilization }
             .prefix(limit))
+    }
+
+    /// The menu bar's rings: the chosen metric, then up to two limits the user added (FR-28) in
+    /// snapshot order, then high limits (FR-27) while fewer than two extra rings are shown.
+    /// `extraThreshold` is nil when the automatic rings are off.
+    public func menuBarWindows(metric: MenuBarMetric, pinned: [String], extraThreshold: Double?) -> (primary: LimitWindow?, extras: [LimitWindow]) {
+        let primary = window(for: metric)
+        let chosen = Array(windows.filter { $0.id != primary?.id && pinned.contains($0.id) }.prefix(MenuBarPins.maxPinned))
+        let shown = Set(chosen.map(\.id) + [primary?.id].compactMap { $0 })
+        let high = extraThreshold.map { highWindows(excluding: shown, from: $0, limit: max(0, 2 - chosen.count)) } ?? []
+        return (primary, chosen + high)
     }
 
     public func withPlan(_ plan: String?) -> UsageSnapshot {
@@ -181,6 +201,21 @@ public enum MenuBarMetric: String, Codable, CaseIterable, Identifiable, Sendable
         case .weekly: return "Weekly"
         case .highest: return "Highest"
         }
+    }
+}
+
+/// The limits added to the menu bar (FR-28), stored as comma-separated `LimitWindow.id`s so
+/// the setting fits `@AppStorage` and can be passed on the command line.
+public enum MenuBarPins {
+    /// Main ring plus two keeps the item narrow enough not to be hidden on notched displays.
+    public static let maxPinned = 2
+
+    public static func decode(_ value: String) -> [String] {
+        value.split(separator: ",").map(String.init)
+    }
+
+    public static func encode(_ ids: [String]) -> String {
+        ids.joined(separator: ",")
     }
 }
 

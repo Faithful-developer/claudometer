@@ -13,12 +13,18 @@ enum PreviewRenderer {
         let dir = URL(fileURLWithPath: args.count > index + 1 ? args[index + 1] : "previews", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
-        // `--sample high|stale|signedout` renders made-up states for design review.
+        // `--sample high|rings|pinned|stale|signedout` renders made-up states for design review.
         let sample = args.firstIndex(of: "--sample").flatMap { args.count > $0 + 1 ? args[$0 + 1] : nil }
         let initial: UsageState?
         switch sample {
         case "high": initial = highSample
         case "rings": initial = ringsSample
+        case "pinned":
+            initial = pinnedSample
+            // The argument domain is volatile, so the user's own settings stay untouched.
+            UserDefaults.standard.setVolatileDomain(
+                [SettingsKey.menuBarPinnedLimits: MenuBarPins.encode(["weekly_all", "weekly_scoped:Fable"])],
+                forName: UserDefaults.argumentDomain)
         case "stale": initial = UsageState(snapshot: highSample.snapshot, error: .offline)
         case "signedout": initial = UsageState(error: .notSignedIn)
         default: initial = nil
@@ -27,8 +33,7 @@ enum PreviewRenderer {
         for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
             NSAppearance(named: appearance)?.performAsCurrentDrawingAppearance {
                 let settings = AppSettings.current
-                let window = store.state.snapshot?.window(for: settings.menuBarMetric)
-                let extras = settings.menuBarExtraRings ? store.state.snapshot?.highWindows(excluding: window, from: settings.menuBarExtraThreshold) ?? [] : []
+                let (window, extras) = settings.menuBarWindows(store.state.snapshot)
                 for compact in [false, true] {
                     let icon = MenuBarIcon.image(
                         primary: MenuBarIcon.Ring(window: window, level: settings.level(for: window?.utilization)),
@@ -161,6 +166,22 @@ enum PreviewRenderer {
                 LimitWindow(id: "session", group: .session, title: "Session (5h)", utilization: 50, resetsAt: now.addingTimeInterval(3 * 3600)),
                 LimitWindow(id: "weekly_all", group: .weekly, title: "Weekly · all models", utilization: 80, resetsAt: now.addingTimeInterval(2 * 86400)),
                 LimitWindow(id: "weekly_scoped:Fable", group: .weekly, title: "Weekly · Fable", utilization: 88, resetsAt: now.addingTimeInterval(2 * 86400)),
+            ],
+            plan: "max",
+            fetchedAt: now.addingTimeInterval(-60)
+        ))
+    }
+
+    /// Every limit well below the extra-ring threshold, with weekly and Fable added to the menu bar;
+    /// Opus shows the disabled checkbox once two are added.
+    private static var pinnedSample: UsageState {
+        let now = Date()
+        return UsageState(snapshot: UsageSnapshot(
+            windows: [
+                LimitWindow(id: "session", group: .session, title: "Session (5h)", utilization: 26, resetsAt: now.addingTimeInterval(3 * 3600)),
+                LimitWindow(id: "weekly_all", group: .weekly, title: "Weekly · all models", utilization: 41, resetsAt: now.addingTimeInterval(2 * 86400)),
+                LimitWindow(id: "weekly_scoped:Fable", group: .weekly, title: "Weekly · Fable", utilization: 57, resetsAt: now.addingTimeInterval(2 * 86400)),
+                LimitWindow(id: "weekly_scoped:Opus", group: .weekly, title: "Weekly · Opus", utilization: 12, resetsAt: now.addingTimeInterval(2 * 86400)),
             ],
             plan: "max",
             fetchedAt: now.addingTimeInterval(-60)

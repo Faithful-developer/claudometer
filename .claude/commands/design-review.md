@@ -17,6 +17,6 @@ CHANGED FILES (working tree vs last commit, if any):
 
 OBJECTIVE:
 1. Build and render every state:
-   `swift build && B=$(swift build --show-bin-path)/Claudometer && $B --render-previews review/renders && for s in high stale signedout; do $B --render-previews review/renders --sample "$s"; done`
+   `swift build && B=$(swift build --show-bin-path)/Claudometer && $B --render-previews review/renders && for s in high rings pinned stale signedout; do $B --render-previews review/renders --sample "$s"; done`
 2. Use the `design-review` agent to review the renders and the UI code against `context/design-principles.md` and `context/style-guide.md`.
 3. Reply with the agent's markdown report and nothing else.

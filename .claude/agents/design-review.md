@@ -15,6 +15,8 @@ A browser cannot drive this app. Your "live environment" is the app's own render
 B=$(swift build --show-bin-path)/Claudometer   # after `swift build`
 $B --render-previews review/renders                     # live cached data
 $B --render-previews review/renders --sample high       # warning + critical
+$B --render-previews review/renders --sample rings      # two other limits high: automatic rings
+$B --render-previews review/renders --sample pinned     # weekly and Fable added to the menu bar
 $B --render-previews review/renders --sample stale      # offline, last known data
 $B --render-previews review/renders --sample signedout  # no login
 ```

@@ -2,7 +2,7 @@
 
 # Claudometer — unofficial Claude usage meter
 
-A tiny macOS menu bar app (plus a desktop widget) that shows how much of your **Claude plan limits** you've used: the 5‑hour session window and the weekly windows, each with a reset countdown. When another limit runs high (say weekly at 80%), it gets its own lettered ring in the menu bar so you don't miss it. Click any limit in the popover to copy all your limits as an image.
+A tiny macOS menu bar app (plus a desktop widget) that shows how much of your **Claude plan limits** you've used: the 5‑hour session window and the weekly windows, each with a reset countdown. When another limit runs high (say weekly at 80%), it gets its own lettered ring in the menu bar so you don't miss it, and in Settings you can keep weekly or per-model limits (like Fable) next to the session ring all the time. Click any limit in the popover to copy all your limits as an image.
 
 > **Unofficial.** Claudometer is an independent open-source project. It is not affiliated with, endorsed by or supported by Anthropic. It relies on an **undocumented** usage endpoint that may change or stop working at any time; if the format changes, the app says "Usage format not recognised" instead of showing wrong numbers.
 
@@ -126,7 +126,7 @@ Claudometer follows Apple's Human Interface Guidelines and looks like a built-in
 
 ## Developer notes
 
-- `Claudometer --render-previews <dir> [--sample high|rings|stale|signedout]` renders the menu bar icon, popover and all three widget sizes (light and dark) to PNGs, then exits. It uses the cached state, or made-up numbers: `--sample high` for high usage, `--sample rings` for two other limits high enough to get extra menu bar rings. It's used for the screenshots above.
+- `Claudometer --render-previews <dir> [--sample high|rings|pinned|stale|signedout]` renders the menu bar icon, popover and all three widget sizes (light and dark) to PNGs, then exits. It uses the cached state, or made-up numbers: `--sample high` for high usage, `--sample rings` for two other limits high enough to get extra menu bar rings, `--sample pinned` for weekly and Fable added to the menu bar. It's used for the screenshots above.
 - `swift scripts/make-icon.swift` regenerates `Resources/AppIcon.icns`.
 - `scripts/release.sh 0.2.0 "notes"` builds the app with the widget, packages a DMG, tags `v0.2.0` and publishes the GitHub release. Always bump the version: the in-app update check compares it with the latest release.
 - Notifications and launch at login only work from the bundled `.app`, not from `swift run`.

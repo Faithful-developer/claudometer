@@ -9,6 +9,7 @@ enum SettingsKey {
     static let appearance = "appearance"
     static let menuBarMetric = "menuBarMetric"
     static let compactMenuBar = "compactMenuBar"
+    static let menuBarPinnedLimits = "menuBarPinnedLimits"
     static let menuBarExtraRings = "menuBarExtraRings"
     static let menuBarExtraThreshold = "menuBarExtraThreshold"
     static let warningThreshold = "warningThreshold"
@@ -28,6 +29,7 @@ struct AppSettings {
     var refreshMinutes: Int
     var menuBarMetric: MenuBarMetric
     var compactMenuBar: Bool
+    var menuBarPinnedLimits: [String]
     var menuBarExtraRings: Bool
     var menuBarExtraThreshold: Double
     var warningThreshold: Double
@@ -42,6 +44,7 @@ struct AppSettings {
         SettingsKey.appearance: AppAppearance.system.rawValue,
         SettingsKey.menuBarMetric: MenuBarMetric.session.rawValue,
         SettingsKey.compactMenuBar: false,
+        SettingsKey.menuBarPinnedLimits: "",
         SettingsKey.menuBarExtraRings: true,
         SettingsKey.menuBarExtraThreshold: 80.0,
         SettingsKey.warningThreshold: 60.0,
@@ -62,6 +65,7 @@ struct AppSettings {
             refreshMinutes: min(max(d.integer(forKey: SettingsKey.refreshMinutes), 1), 30),
             menuBarMetric: MenuBarMetric(rawValue: d.string(forKey: SettingsKey.menuBarMetric) ?? "") ?? .session,
             compactMenuBar: d.bool(forKey: SettingsKey.compactMenuBar),
+            menuBarPinnedLimits: MenuBarPins.decode(d.string(forKey: SettingsKey.menuBarPinnedLimits) ?? ""),
             menuBarExtraRings: d.bool(forKey: SettingsKey.menuBarExtraRings),
             menuBarExtraThreshold: d.double(forKey: SettingsKey.menuBarExtraThreshold),
             warningThreshold: d.double(forKey: SettingsKey.warningThreshold),
@@ -90,6 +94,12 @@ struct AppSettings {
             warning: settings.warningThreshold,
             critical: settings.criticalThreshold
         ))
+    }
+
+    /// The menu bar's rings for `snapshot` (FR-3, FR-27, FR-28).
+    func menuBarWindows(_ snapshot: UsageSnapshot?) -> (primary: LimitWindow?, extras: [LimitWindow]) {
+        snapshot?.menuBarWindows(metric: menuBarMetric, pinned: menuBarPinnedLimits,
+                                 extraThreshold: menuBarExtraRings ? menuBarExtraThreshold : nil) ?? (nil, [])
     }
 
     func level(for utilization: Double?) -> UsageLevel {

@@ -1,6 +1,31 @@
 import SwiftUI
 import WidgetKit
 
+/// The mark a limit's ring carries in the menu bar (5, W, F…), drawn as a plain outline so
+/// Settings can show which ring a choice adds without implying any usage.
+public struct BadgeGlyph: View {
+    let letter: String
+    let enabled: Bool
+
+    public init(letter: String, enabled: Bool = true) {
+        self.letter = letter
+        self.enabled = enabled
+    }
+
+    public var body: some View {
+        ZStack {
+            Circle().inset(by: 0.75).stroke(Ink.secondary, lineWidth: 1.5)
+            Text(letter)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(Ink.primary)
+        }
+        .frame(width: 16, height: 16)
+        // Dimmed like a disabled control, to match the greyed checkbox and label beside it.
+        .opacity(enabled ? 1 : 0.4)
+        .accessibilityHidden(true)
+    }
+}
+
 /// Linear capacity meter in the style of macOS progress bars: a thin capsule on a
 /// system-fill track. The fill carries severity; an optional tick marks how much of the
 /// window's time has passed, which turns the bar into a pace check.

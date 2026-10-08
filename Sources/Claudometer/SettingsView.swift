@@ -27,11 +27,32 @@ struct GeneralSettings: View {
     @AppStorage(SettingsKey.refreshMinutes) private var refreshMinutes = 5
     @AppStorage(SettingsKey.menuBarMetric) private var metric = MenuBarMetric.session.rawValue
     @AppStorage(SettingsKey.compactMenuBar) private var compact = false
+    @AppStorage(SettingsKey.menuBarPinnedLimits) private var pinned = ""
     @AppStorage(SettingsKey.menuBarExtraRings) private var extraRings = true
     @AppStorage(SettingsKey.menuBarExtraThreshold) private var extraThreshold = 80.0
     @AppStorage(SettingsKey.warningThreshold) private var warning = 60.0
     @AppStorage(SettingsKey.criticalThreshold) private var critical = 85.0
     @StateObject private var loginItem = LoginItem()
+
+    /// Limits that can be added next to the main one (FR-28). With "Highest" the main limit
+    /// changes as usage moves, so every limit is offered and the menu bar skips the duplicate.
+    private var addableWindows: [LimitWindow]? {
+        guard let snapshot = store.state.snapshot else { return nil }
+        let metric = MenuBarMetric(rawValue: metric) ?? .session
+        let main = metric == .highest ? nil : snapshot.window(for: metric)
+        return snapshot.windows.filter { $0.id != main?.id }
+    }
+
+    private func isPinned(_ id: String) -> Binding<Bool> {
+        Binding(
+            get: { MenuBarPins.decode(pinned).contains(id) },
+            set: { on in
+                var ids = MenuBarPins.decode(pinned).filter { $0 != id }
+                if on { ids.append(id) }
+                pinned = MenuBarPins.encode(ids)
+            }
+        )
+    }
 
     var body: some View {
         Form {
@@ -55,14 +76,40 @@ struct GeneralSettings: View {
                 Picker("Show", selection: $metric) {
                     ForEach(MenuBarMetric.allCases) { Text($0.title).tag($0.rawValue) }
                 }
+                if let windows = addableWindows {
+                    if !windows.isEmpty {
+                        let full = windows.filter { MenuBarPins.decode(pinned).contains($0.id) }.count >= MenuBarPins.maxPinned
+                        LabeledContent("Always show") {
+                            VStack(alignment: .leading, spacing: 6) {
+                                ForEach(windows) { window in
+                                    let ticked = isPinned(window.id)
+                                    Toggle(isOn: ticked) {
+                                        Label {
+                                            Text(window.settingsTitle)
+                                        } icon: {
+                                            BadgeGlyph(letter: window.badgeLetter, enabled: ticked.wrappedValue || !full)
+                                        }
+                                    }
+                                    .disabled(full && !ticked.wrappedValue)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    LabeledContent("Always show") {
+                        Text(store.state.error == .notSignedIn ? "Sign in on the Login tab first." : "Available after the first update.")
+                            .font(.callout)
+                            .foregroundStyle(Ink.secondary)
+                    }
+                }
                 Toggle("Show percentage", isOn: Binding(get: { !compact }, set: { compact = !$0 }))
-                Toggle("Show rings for other high limits", isOn: $extraRings)
+                Toggle("Show other limits when high", isOn: $extraRings)
                 ThresholdSlider(title: "At or above", symbol: "circle.dotted", tint: Ink.secondary, value: $extraThreshold, range: 50...100)
                     .disabled(!extraRings)
             } header: {
                 Text("Menu Bar")
             } footer: {
-                Text("Up to two other limits at or above this level get their own ring, marked 5 for the 5‑hour session, W for weekly, or the model’s initial, such as F for Fable.")
+                Text("Always show up to two limits. Other limits get a ring when they reach this level, up to three rings in all.")
                     .foregroundStyle(.secondary)
             }
 
