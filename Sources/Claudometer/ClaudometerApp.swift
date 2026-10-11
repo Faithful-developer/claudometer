@@ -15,6 +15,7 @@ struct ClaudometerApp: App {
         // Agent app: no Dock icon even when launched without an Info.plist (`swift run`).
         NSApplication.shared.setActivationPolicy(.accessory)
         AppAppearance.applyCurrent()
+        LoginItem.enableOnFirstLaunch()
         store = UsageStore()
         store.start()
         updates.start()

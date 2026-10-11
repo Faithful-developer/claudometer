@@ -418,4 +418,14 @@ final class LoginItem: ObservableObject {
         }
         isEnabled = SMAppService.mainApp.status == .enabled
     }
+
+    /// On by default: registers once on the first launch of the bundled `.app`, so the widget
+    /// keeps getting data after a restart. Later launches leave the user's choice alone.
+    static func enableOnFirstLaunch() {
+        let defaults = UserDefaults.standard
+        guard Bundle.main.bundleURL.pathExtension == "app",
+              !defaults.bool(forKey: SettingsKey.loginItemOffered) else { return }
+        defaults.set(true, forKey: SettingsKey.loginItemOffered)
+        try? SMAppService.mainApp.register()
+    }
 }

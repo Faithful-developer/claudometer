@@ -18,6 +18,8 @@ enum SettingsKey {
     static let notifyLow = "notifyLow"
     static let notifyHigh = "notifyHigh"
     static let notifyReset = "notifyReset"
+    /// Set once Open at Login has been turned on by default, so a later "off" sticks.
+    static let loginItemOffered = "loginItemOffered"
     /// `ThresholdTracker` as JSON.
     static let notificationCycles = "notificationCycles"
     /// Replaced by `notificationCycles`; read once to migrate, then removed.
