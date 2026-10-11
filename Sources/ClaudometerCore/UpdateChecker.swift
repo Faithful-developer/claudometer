@@ -1,13 +1,29 @@
+import CryptoKit
 import Foundation
 
 /// A newer version published on GitHub Releases.
 public struct AppRelease: Codable, Hashable, Sendable {
     public let version: String
     public let pageURL: URL
+    /// The release's DMG, for installing from inside the app; nil when the release has none
+    /// or GitHub gave no checksum for it.
+    public let download: Download?
 
-    public init(version: String, pageURL: URL) {
+    public struct Download: Codable, Hashable, Sendable {
+        public let url: URL
+        /// Lowercase hex SHA-256 that GitHub reports for the asset.
+        public let sha256: String
+
+        public init(url: URL, sha256: String) {
+            self.url = url
+            self.sha256 = sha256
+        }
+    }
+
+    public init(version: String, pageURL: URL, download: Download? = nil) {
         self.version = version
         self.pageURL = pageURL
+        self.download = download
     }
 }
 
@@ -39,7 +55,33 @@ public struct UpdateChecker: Sendable {
               root["draft"] as? Bool != true, root["prerelease"] as? Bool != true else { return nil }
         let page = (root["html_url"] as? String).flatMap(URL.init(string:)) ?? releasesPage
         let version = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
-        return isNewer(version, than: current) ? AppRelease(version: version, pageURL: page) : nil
+        guard isNewer(version, than: current) else { return nil }
+        return AppRelease(version: version, pageURL: page, download: dmg(in: root["assets"]))
+    }
+
+    /// The `.dmg` asset with its checksum (`"digest": "sha256:…"`). Without a checksum the
+    /// download can't be verified, so the update is offered as a page link only.
+    static func dmg(in assets: Any?) -> AppRelease.Download? {
+        for asset in assets as? [[String: Any]] ?? [] {
+            guard let name = asset["name"] as? String, name.hasSuffix(".dmg"),
+                  let url = (asset["browser_download_url"] as? String).flatMap(URL.init(string:)), url.scheme == "https",
+                  let digest = asset["digest"] as? String, digest.hasPrefix("sha256:") else { continue }
+            let hex = String(digest.dropFirst("sha256:".count)).lowercased()
+            guard hex.count == 64, hex.allSatisfy(\.isHexDigit) else { continue }
+            return AppRelease.Download(url: url, sha256: hex)
+        }
+        return nil
+    }
+
+    /// Lowercase hex SHA-256 of a file, read in chunks.
+    public static func sha256(of file: URL) throws -> String {
+        let handle = try FileHandle(forReadingFrom: file)
+        defer { try? handle.close() }
+        var hasher = SHA256()
+        while let chunk = try handle.read(upToCount: 1 << 20), !chunk.isEmpty {
+            hasher.update(data: chunk)
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
     /// Numeric comparison of dotted versions: 0.10.0 > 0.9.2, 1.0 == 1.0.0.

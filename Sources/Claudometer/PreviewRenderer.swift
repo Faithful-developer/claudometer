@@ -36,7 +36,7 @@ enum PreviewRenderer {
         case "signedout": initial = UsageState(error: .notSignedIn)
         default: initial = nil
         }
-        let store = UsageStore(markCachedStale: false, initialState: initial)
+        let store = UsageStore(markCachedStale: false, initialState: initial, initialHistory: sampleHistory(initial))
         for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
             NSAppearance(named: appearance)?.performAsCurrentDrawingAppearance {
                 let settings = AppSettings.current
@@ -95,7 +95,10 @@ enum PreviewRenderer {
             let style = WidgetStyle(metric: settings.menuBarMetric, warning: settings.warningThreshold, critical: settings.criticalThreshold)
             for size in WidgetSize.allCases {
                 // Mimics the desktop widget chrome: 16pt content margins, continuous corners.
-                let widget = UsageWidgetContent(size: size, state: store.state, now: Date(), style: style, refreshControl: AnyView(RefreshGlyph()))
+                let hero = store.state.snapshot?.window(for: style.metric)
+                let forecast = size == .large && store.state.error == nil
+                    ? hero.flatMap { store.history.forecast(for: $0, at: store.state.snapshot!.fetchedAt) } : nil
+                let widget = UsageWidgetContent(size: size, state: store.state, now: Date(), style: style, forecast: forecast, refreshControl: AnyView(RefreshGlyph()))
                     .padding(16)
                     .frame(width: size.size.width, height: size.size.height)
                     .background(Palette.surface)
@@ -150,6 +153,40 @@ enum PreviewRenderer {
         let image = NSImage(size: bounds.size)
         image.addRepresentation(rep)
         return image
+    }
+
+    /// A made-up week for samples with data: the weekly limit climbing day by day since its
+    /// reset five days ago, and the session rising fast over the last hour, so the usage per
+    /// day and the pace forecast both show. Empty for the others (real history isn't read).
+    private static func sampleHistory(_ state: UsageState?) -> UsageHistory {
+        guard let snapshot = state?.snapshot, let weekly = snapshot.weekly, let session = snapshot.session,
+              let weeklyReset = weekly.resetsAt, let sessionReset = session.resetsAt else { return UsageHistory() }
+        let fetched = snapshot.fetchedAt
+        let weekStart = weeklyReset.addingTimeInterval(-7 * 86400)
+        var samples: [UsageHistory.Sample] = []
+        // Last week, before the reset.
+        for step in 0..<4 {
+            let t = weekStart.addingTimeInterval(Double(step - 4) * 4 * 3600)
+            samples.append(.init(t: t, u: [weekly.id: 60 + Double(step) * 4], r: [weekly.id: weekStart]))
+        }
+        // This week: a share of the current figure per day, read every 4 hours.
+        let perDay: [Double] = [0.18, 0.12, 0.22, 0.13, 0.19, 0.16]
+        var used = 0.0
+        for (day, share) in perDay.enumerated() {
+            for step in 1...6 {
+                let t = weekStart.addingTimeInterval(Double(day) * 86400 + Double(step) * 4 * 3600)
+                guard t < fetched.addingTimeInterval(-3600) else { break }
+                used += weekly.utilization * share / 6
+                samples.append(.init(t: t, u: [weekly.id: min(used, weekly.utilization)], r: [weekly.id: weeklyReset]))
+            }
+        }
+        // The session over the last hour.
+        for (minutes, value) in [(60.0, 78.0), (45, 81), (30, 85), (15, 88)] {
+            samples.append(.init(t: fetched.addingTimeInterval(-minutes * 60),
+                                 u: [session.id: value, weekly.id: weekly.utilization - 1],
+                                 r: [session.id: sessionReset, weekly.id: weeklyReset]))
+        }
+        return UsageHistory(samples: samples.sorted { $0.t < $1.t })
     }
 
     private static var highSample: UsageState {

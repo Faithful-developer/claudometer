@@ -73,7 +73,7 @@ User-Agent: Claudometer/<version>
     ```json
     { "claudeAiOauth": { "accessToken": "...", "refreshToken": "...", "expiresAt": 1759770000000, "scopes": [...], "subscriptionType": "max" } }
     ```
-- Claudometer **only reads** this item with `SecItemCopyMatching`. It never writes to it, deletes it or refreshes the token.
+- Claudometer **only reads** this item. It tries `/usr/bin/security find-generic-password` first (the item trusts that tool, so app rebuilds don't bring back the Keychain prompt), then `SecItemCopyMatching`, then `~/.claude/.credentials.json`. It never writes to it or deletes it.
 - If `expiresAt` (in ms) is in the past, the app shows the "Token expired" state (§7). Claude Code refreshes the token the next time it runs.
 - `subscriptionType`, if present, is shown in the popover footer, for example "Max".
 
@@ -157,7 +157,7 @@ enum UsageState: Codable {
   - **Small (`systemSmall`):** a large ring for the primary metric, the %, and "resets in Xh Ym".
   - **Medium (`systemMedium`):** Session and Weekly bars with % and reset times.
   - **Large (`systemLarge`):** all windows, the plan name and "updated at" time.
-- **FR-11:** The widget reads the latest `UsageState` from the shared App Group container. **The widget makes no network calls.**
+- **FR-11:** The widget reads the latest `UsageState` from the shared folder `~/Library/Application Support/Claudometer/` (NFR-7). **The widget makes no network calls.**
 - **FR-12:** The app calls `WidgetCenter.shared.reloadAllTimelines()` after each successful fetch.
 - **FR-13:** Each widget timeline adds entries every 15 min so countdowns stay roughly current between app updates. If the data is more than 30 min old, the widget shows a "stale" badge.
 - **FR-14:** Clicking the widget opens the popover through the URL scheme `claudometer://open`.
@@ -172,6 +172,8 @@ enum UsageState: Codable {
 - **FR-19:** Optional local notifications through `UserNotifications`. They are off until the user enables them.
 - **FR-20:** The alert thresholds default to **80%** and **95%**. Each threshold fires **once per window per reset cycle**. A cycle is the window id plus its `resetsAt`, compared with a 15-minute tolerance, because the API's reset time drifts by fractions of a second between requests. Refreshing (⌘R, the widget's button, a restart) never repeats an alert, and a window missing from one response keeps its state. Notification identifiers are per window and threshold, so a repeat would replace the banner rather than stack.
 - **FR-21:** An optional "Limit reset" notification fires once when a window that reached the top threshold rolls over to a new cycle (its reset time moves on, or the window ends). A dip in usage within the same cycle does not count.
+- **FR-29:** "Usage stops updating" (on by default): one notification per outage, right away for errors the user must fix (signed out, login or session key expired, Keychain denied, API changed) and after 30 min of failures for the rest (offline, server, rate limit). It is removed from Notification Center when data comes back.
+- **FR-30:** "Update available" (on by default): one notification per new version, never repeated for the same version across restarts, with an **Install Update** action (§5.2 `UpdateInstaller`). A dot on the menu bar icon stays while an update is waiting.
 
 ### 3.6 Settings window
 - **FR-22:** Settings:
@@ -181,10 +183,12 @@ enum UsageState: Codable {
   - **Compact menu bar:** on/off
   - **Show other limits when high (FR-27):** on/off and a threshold slider, 50–100%, default 80%
   - **Colour thresholds:** two sliders
-  - **Notifications:** on/off and the thresholds
+  - **Notifications:** limit alerts (on/off, thresholds, reset alert), usage stops updating (FR-29), update available (FR-30)
+  - **Language:** Same as macOS / English / Русский, applied immediately; the widget follows
   - **Launch at login:** uses `SMAppService.mainApp`
-  - **About:** version and a GitHub link
-- **FR-23:** Settings are stored in `UserDefaults`. Values the widget needs, such as the primary metric and thresholds, are mirrored into the App Group defaults.
+  - **Login:** data source, the claude.ai session key (§2.3) with step-by-step help
+  - **About:** version, Check for Updates / Install Update, and a GitHub link
+- **FR-23:** Settings are stored in `UserDefaults`. Values the widget needs, such as the primary metric and thresholds, (and the UI language) are mirrored into `widget-style.json` in the shared folder.
 
 ### 3.7 Onboarding / states
 - **FR-24:** On first launch, a short onboarding sheet explains:
@@ -203,19 +207,18 @@ enum UsageState: Codable {
 - **NFR-3 · Performance:** at idle the app uses less than 1% CPU and less than 50 MB RSS. Each fetch uses less than 50 KB of network traffic.
 - **NFR-4 · Privacy and security:**
   - The access token stays in memory only. It is never written to disk, `UserDefaults`, logs or the App Group container.
-  - The only network host is `api.anthropic.com`, plus `claude.ai` if the v2 fallback is enabled.
+  - Network hosts: `api.anthropic.com`, `claude.ai` if the fallback is enabled, and GitHub (`api.github.com` for the daily release check, `github.com` to download an update the user installs).
   - There is no analytics and no telemetry.
   - Logs go through `os.Logger` with `privacy: .private` on anything sensitive.
 - **NFR-5 · UX:**
   - Supports light and dark mode.
   - Respects accent colour and Reduce Motion.
   - Every control and gauge has a VoiceOver label, for example "Session limit, 42 percent used, resets in 2 hours 14 minutes".
-- **NFR-6 · Localization:** English in v1. All strings live in `Localizable.xcstrings` so more languages can be added later.
+- **NFR-6 · Localization:** English and Russian. UI text goes through `tr()` (`L10n.swift`) with English keys and `Resources/Localization/{en,ru}.lproj` (`.strings` + `.stringsdict` plurals), copied into both the app and the widget. The language follows macOS or the Settings picker; a test fails on untranslated keys.
 - **NFR-7 · Distribution:**
-  - v1 is a Developer ID–signed, notarized DMG.
+  - Ad-hoc signed DMG (no Apple Developer account, decision of 2026-10-07; see §8). Also installable with `brew install --cask faithful-developer/tap/claudometer` or `scripts/install.sh`, which verify the release SHA-256 and skip Gatekeeper's first-launch step. Updates install from inside the app.
   - The **main app is not sandboxed**, because it reads another app's Keychain item.
-  - The **widget extension is sandboxed**, which WidgetKit requires. It only reads the App Group container.
-  - The App Group ID uses the team prefix: `<TEAMID>.com.<you>.claudometer`.
+  - The **widget extension is sandboxed**, which WidgetKit requires. Instead of an App Group (which needs a signing team) it has a read-only sandbox exception for `~/Library/Application Support/Claudometer/`, where the app writes the shared JSON.
 - **NFR-8 · Robustness:** decoding is tolerant. Unknown fields are ignored, missing windows are skipped, and the app never crashes on bad data.
 
 ---
@@ -243,6 +246,11 @@ enum UsageState: Codable {
 | `NotificationManager` | App | Threshold crossing detection, de-duplication, `UNUserNotificationCenter` |
 | `SettingsStore` | Shared | Typed `UserDefaults` wrapper, mirrored to App Group defaults |
 | `Formatters` | Shared | `"2h 14m"`, `"Fri 09:00"`, colour for a given %, labels for each `LimitKind` |
+| `L10n` | Shared | Language resolution and `tr()` lookups (NFR-6) |
+| `UsageHistory` | Shared | Compact samples of successful fetches (about a week) for the 7-day chart and the "at this pace" forecast (F-3, F-4) |
+| `OutageTracker` | Shared | When to send the FR-29 notification |
+| `UpdateChecker` | Shared | Latest GitHub release, its DMG and SHA-256 |
+| `UpdateStore` / `UpdateInstaller` | App | Daily check; **Install Update** downloads, verifies (SHA-256, bundle id, version, code signature), swaps the app and relaunches |
 
 ### 5.3 Data flow
 
@@ -403,6 +411,8 @@ Stale data (E-3 to E-6) is still displayed but greyed out, with a "Showing data 
   | AC-9 | Pass | 0.70% average, 11.3% peak, 60 samples every 10 s over 10 minutes with `ps`. Included Wi‑Fi toggling, refreshes and Settings, so true idle is lower. |
 
   M5 is done apart from Developer ID signing and notarization (deferred, see above).
+- **0.2.0 (2026-10-11):** Russian localization (NFR-6), FR-29/FR-30 notifications, recovery buttons in the popover and widget, step-by-step session key help, designed DMG window (`scripts/make-dmg.sh`).
+- **0.2.1 (2026-10-11):** in-app **Install Update**, usage history and forecast (F-3, F-4), Homebrew tap and `scripts/install.sh` (F-6).
 
 ---
 
@@ -424,10 +434,10 @@ Stale data (E-3 to E-6) is still displayed but greyed out, with a "Showing data 
 ## 10. Open questions & future work
 
 - **Q-1:** Do the exact response fields (`seven_day_sonnet`, extra-usage or "overage" fields) differ between Pro and Max? This is answered in M1.
-- **Q-2:** Should the app ask Claude Code to refresh an expired token, for example by running `claude -p ""`? This is not done in v1 because it has side effects.
+- **Q-2:** Should the app ask Claude Code to refresh an expired token? **Answered:** no. Tested on 2026-10-11: `claude auth status` doesn't renew an expired token, and `claude -p` would spend usage. The claude.ai session key (§2.3) covers this case.
 - **F-1:** The claude.ai cookie fallback (§2.3) for users who don't use Claude Code.
 - **F-2:** Multiple accounts or organisations.
-- **F-3:** A local usage history: store snapshots and show a 7-day sparkline in the popover and the large widget.
-- **F-4:** Show the "burn rate" and the projected time to the limit at the current pace.
+- **F-3:** ~~A local usage history: store snapshots and show a 7-day chart in the popover.~~ Done (next release).
+- **F-4:** ~~Show the "burn rate" and the projected time to the limit at the current pace.~~ Done (next release): shown only when the limit would be hit before it resets.
 - **F-5:** A Raycast extension, an Übersicht widget, or an iOS companion that reads the same data.
-- **F-6:** Homebrew Cask distribution and automatic updates with Sparkle. This would add a dependency, so it needs a review.
+- **F-6:** Distribution and updates. **Done without Sparkle:** in-app updates (`UpdateInstaller`), a personal Homebrew tap (`Faithful-developer/homebrew-tap`, bumped by `scripts/release.sh`) and `scripts/install.sh`. **Open:** the main `homebrew/cask` tap and a warning-free first launch both need Developer ID signing and notarization.

@@ -309,6 +309,55 @@ public struct BreakdownChart: View {
     }
 }
 
+/// Usage per day as small vertical bars, oldest left, today right, with weekday initials.
+/// Bars scale to the busiest day (at least 10 points, so a quiet week doesn't look full).
+public struct DailyBars: View {
+    let days: [UsageHistory.Day]
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    public init(days: [UsageHistory.Day]) {
+        self.days = days
+    }
+
+    public var body: some View {
+        let top = max(days.map(\.percent).max() ?? 0, 10)
+        HStack(alignment: .bottom, spacing: 6) {
+            ForEach(Array(days.enumerated()), id: \.offset) { index, day in
+                let isToday = index == days.count - 1
+                VStack(spacing: 4) {
+                    ZStack(alignment: .bottom) {
+                        Capsule().fill(Ink.track(contrast))
+                        Capsule()
+                            .fill(LinearGradient(colors: [Palette.coral, Palette.coralLight], startPoint: .bottom, endPoint: .top))
+                            .frame(height: day.percent > 0 ? max(30 * day.percent / top, 4) : 0)
+                    }
+                    .frame(width: 10, height: 30)
+                    Text(Self.initial(day.date))
+                        .font(.system(size: 10, weight: isToday ? .semibold : .regular))
+                        .foregroundStyle(isToday ? Ink.primary : Ink.tertiary(contrast))
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(days.map { tr("%@: %@", Self.weekday($0.date), Formatters.percent($0.percent)) }.joined(separator: ", "))
+    }
+
+    static func initial(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = L10n.locale
+        formatter.setLocalizedDateFormatFromTemplate("EEEEE")
+        return formatter.string(from: date)
+    }
+
+    static func weekday(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = L10n.locale
+        formatter.setLocalizedDateFormatFromTemplate("EEEE")
+        return formatter.string(from: date)
+    }
+}
+
 /// Section header as in macOS menus and Control Center: small, bold, secondary, Title Case.
 public struct SectionHeader: View {
     let text: String

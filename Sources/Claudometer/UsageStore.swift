@@ -14,9 +14,12 @@ final class UsageStore {
     private(set) var state: UsageState
     private(set) var isLoading = false
     private(set) var lastAttempt: Date?
+    /// A week of successful readings, for usage per day and the pace forecast.
+    private(set) var history: UsageHistory
 
     @ObservationIgnored private let service: UsageService
     @ObservationIgnored private let snapshotStore: SnapshotStore
+    @ObservationIgnored private let historyStore: HistoryStore?
     @ObservationIgnored private let notifications: NotificationManager
     @ObservationIgnored private var pollTask: Task<Void, Never>?
     @ObservationIgnored private var failures = 0
@@ -31,10 +34,14 @@ final class UsageStore {
         snapshotStore: SnapshotStore = .default(),
         notifications: NotificationManager? = nil,
         markCachedStale: Bool = true,
-        initialState: UsageState? = nil
+        initialState: UsageState? = nil,
+        initialHistory: UsageHistory? = nil
     ) {
         self.service = service
         self.snapshotStore = snapshotStore
+        // Previews pass their own history and never write it.
+        self.historyStore = initialHistory == nil ? .default() : nil
+        self.history = initialHistory ?? HistoryStore.default().load()
         self.notifications = notifications ?? NotificationManager()
         // Show the last known data immediately, greyed out until the first fetch finishes.
         if let initialState {
@@ -123,6 +130,9 @@ final class UsageStore {
         do {
             let snapshot = try await service.fetch()
             failures = 0
+            // Only fresh data goes into the history, never the projected last known state.
+            history.record(snapshot)
+            historyStore?.save(history)
             apply(UsageState(snapshot: snapshot, error: nil))
             let settings = AppSettings.current
             notifications.process(snapshot, settings: settings)

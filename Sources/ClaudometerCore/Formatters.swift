@@ -26,14 +26,24 @@ public enum Formatters {
         let remaining = date.timeIntervalSince(now)
         if remaining <= 0 { return .resetting }
         if remaining < 24 * 3600 { return .within(remaining) }
+        return .on(weekdayTime(date, calendar: calendar, locale: locale))
+    }
+
+    /// "Fri 09:00", for use mid-sentence; Russian writes day names in lowercase there.
+    static func weekdayTime(_ date: Date, calendar: Calendar = .current, locale: Locale = L10n.locale) -> String {
         let formatter = DateFormatter()
         formatter.calendar = calendar
         formatter.timeZone = calendar.timeZone
         formatter.locale = locale
         formatter.setLocalizedDateFormatFromTemplate("EEE HH:mm")
         let day = formatter.string(from: date)
-        // Always mid-sentence ("Resets Fri 09:00"); Russian writes day names in lowercase there.
-        return .on(locale.language.languageCode == .russian ? day.lowercased(with: locale) : day)
+        return locale.language.languageCode == .russian ? day.lowercased(with: locale) : day
+    }
+
+    /// "At this pace: limit at 16:40", or "… limit at Fri 09:00" when it's not today.
+    public static func forecastText(_ limit: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
+        let when = calendar.isDate(limit, inSameDayAs: now) ? time(limit) : weekdayTime(limit, calendar: calendar)
+        return tr("At this pace: limit at %@", when)
     }
 
     /// "Resets in 2h 14m" when under 24h, otherwise "Resets Fri 09:00".

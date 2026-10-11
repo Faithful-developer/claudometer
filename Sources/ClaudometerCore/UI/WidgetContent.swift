@@ -47,9 +47,12 @@ public struct UsageWidgetContent: View {
     let style: WidgetStyle
     /// The widget's refresh button. WidgetKit's `Button(intent:)` only exists in the widget
     /// target, so it is passed in; previews pass a bare `RefreshGlyph`.
+    /// When the hero limit runs out at the current pace (large widget only).
+    let forecast: Date?
     let refreshControl: AnyView?
 
-    public init(size: WidgetSize, state: UsageState, now: Date, style: WidgetStyle, refreshControl: AnyView? = nil) {
+    public init(size: WidgetSize, state: UsageState, now: Date, style: WidgetStyle, forecast: Date? = nil, refreshControl: AnyView? = nil) {
+        self.forecast = forecast
         self.size = size
         self.state = state
         self.now = now
@@ -157,7 +160,7 @@ public struct UsageWidgetContent: View {
                         .foregroundStyle(Ink.secondary)
                         .lineLimit(1)
                 }
-                StatusLabel(level: level, stale: isStale)
+                StatusLabel(level: level, pace: hero?.pace(now: now), stale: isStale)
                     .font(.system(size: 10))
                     .scaleEffect(0.92)
             }
@@ -199,6 +202,11 @@ public struct UsageWidgetContent: View {
                             .lineLimit(1).truncationMode(.tail)
                         Text(Formatters.resetText(hero.resetsAt, now: now))
                             .font(.system(size: 11)).foregroundStyle(Ink.secondary)
+                        if let forecast, !isStale {
+                            Text(Formatters.forecastText(forecast, now: now))
+                                .font(.system(size: 10)).foregroundStyle(Ink.secondary)
+                                .lineLimit(1).minimumScaleFactor(0.9)
+                        }
                         StatusLabel(level: level, pace: hero.pace(now: now), stale: isStale)
                     }
                 }

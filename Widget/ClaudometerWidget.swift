@@ -89,12 +89,20 @@ struct WidgetView: View {
         // Same language as the app, even when it differs from the macOS one.
         let _ = L10n.resolve(style.language)
         UsageWidgetContent(
-            size: size, state: entry.state, now: entry.date, style: style,
+            size: size, state: entry.state, now: entry.date, style: style, forecast: forecast(style),
             refreshControl: AnyView(
                 Button(intent: RefreshUsageIntent()) { RefreshGlyph() }
                     .buttonStyle(.plain)
             )
         )
+    }
+
+    /// Large widget only: when the main limit runs out at its recent pace, from the history the
+    /// app writes next to the usage state.
+    private func forecast(_ style: WidgetStyle) -> Date? {
+        guard family == .systemLarge, let snapshot = entry.state.snapshot, entry.state.error == nil,
+              let hero = snapshot.window(for: style.metric) else { return nil }
+        return HistoryStore.default().load().forecast(for: hero, at: snapshot.fetchedAt)
     }
 
     private var size: WidgetSize {

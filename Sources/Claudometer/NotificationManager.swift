@@ -10,6 +10,16 @@ final class NotificationManager {
     private var outage: OutageTracker
     nonisolated static let outageIdentifier = "outage"
     nonisolated static let updateIdentifier = "update"
+    nonisolated static let installAction = "install"
+
+    /// "Install Update" button on the update notification.
+    static func registerCategories() {
+        guard isAvailable else { return }
+        let install = UNNotificationAction(identifier: installAction, title: tr("Install Update"), options: [])
+        UNUserNotificationCenter.current().setNotificationCategories([
+            UNNotificationCategory(identifier: updateIdentifier, actions: [install], intentIdentifiers: [])
+        ])
+    }
 
     /// `UNUserNotificationCenter` crashes in a process without a bundle (e.g. `swift run`).
     static var isAvailable: Bool { Bundle.main.bundleIdentifier != nil && Bundle.main.bundleURL.pathExtension == "app" }
@@ -80,7 +90,8 @@ final class NotificationManager {
     static func sendUpdate(_ release: AppRelease) {
         let content = UNMutableNotificationContent()
         content.title = tr("Claudometer %@ is available", release.version)
-        content.body = tr("Click to download it from GitHub.")
+        content.body = tr("Click Install Update to update in place, or click here for the release notes.")
+        content.categoryIdentifier = updateIdentifier
         content.userInfo = ["url": release.pageURL.absoluteString]
         let request = UNNotificationRequest(identifier: updateIdentifier, content: content, trigger: nil)
         Task {

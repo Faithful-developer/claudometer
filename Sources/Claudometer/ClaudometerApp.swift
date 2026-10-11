@@ -22,6 +22,7 @@ struct ClaudometerApp: App {
         store.start()
         updates.start()
         AppDelegate.store = store
+        AppDelegate.updates = updates
     }
 
     var body: some Scene {
@@ -80,10 +81,12 @@ struct MenuBarLabel: View {
 /// the update notification.
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     @MainActor static var store: UsageStore?
+    @MainActor static var updates: UpdateStore?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         MainActor.assumeIsolated {
             if NotificationManager.isAvailable { UNUserNotificationCenter.current().delegate = self }
+            NotificationManager.registerCategories()
         }
     }
 
@@ -96,7 +99,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         let content = response.notification.request.content
         guard response.notification.request.identifier == NotificationManager.updateIdentifier else { return }
         let url = (content.userInfo["url"] as? String).flatMap(URL.init(string:)) ?? UpdateChecker.releasesPage
-        await MainActor.run { _ = NSWorkspace.shared.open(url) }
+        let install = response.actionIdentifier == NotificationManager.installAction
+        await MainActor.run {
+            if install, let updates = Self.updates, updates.canInstall {
+                updates.installUpdate()
+            } else {
+                _ = NSWorkspace.shared.open(url)
+            }
+        }
     }
 
     /// A widget click refreshes, and when the problem needs the user (login expired, signed

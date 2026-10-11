@@ -459,8 +459,15 @@ struct AboutSettings: View {
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 8) {
                 if let release = updates.available {
-                    Button(tr("Download %@…", release.version)) { updates.openDownload() }
-                        .keyboardShortcut(.defaultAction)
+                    if updates.canInstall {
+                        Button(tr("Install %@", release.version)) { updates.installUpdate() }
+                            .keyboardShortcut(.defaultAction)
+                            .disabled(updates.isInstalling)
+                        Button(tr("Release Notes…")) { updates.openDownload() }
+                    } else {
+                        Button(tr("Download %@…", release.version)) { updates.openDownload() }
+                            .keyboardShortcut(.defaultAction)
+                    }
                 } else {
                     Button(tr("Check for Updates")) { Task { await updates.check(manual: true) } }
                         .disabled(updates.isChecking)
@@ -468,8 +475,19 @@ struct AboutSettings: View {
                 if updates.isChecking { ProgressView().controlSize(.small) }
             }
             .padding(.top, 6)
-            if let result = updates.lastResult {
-                Text(result).font(.callout).foregroundStyle(.secondary)
+            switch updates.installState {
+            case .downloading(let fraction):
+                ProgressView(value: fraction).frame(width: 220)
+                Text(tr("Downloading the update…")).font(.callout).foregroundStyle(.secondary)
+            case .installing:
+                ProgressView().controlSize(.small)
+                Text(tr("Installing. Claudometer will restart.")).font(.callout).foregroundStyle(.secondary)
+            case .failed(let message):
+                Text(message).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            case .idle:
+                if let result = updates.lastResult {
+                    Text(result).font(.callout).foregroundStyle(.secondary)
+                }
             }
         }
         .padding(28)

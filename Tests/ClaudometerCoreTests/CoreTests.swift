@@ -382,6 +382,31 @@ private func json(_ string: String) -> Data { Data(string.utf8) }
         #expect(UpdateChecker.newer(than: "0.2.0", in: body) == nil)
         let pre = json(#"{"tag_name":"v0.3.0","prerelease":true}"#)
         #expect(UpdateChecker.newer(than: "0.1.0", in: pre) == nil)
+        // No assets: offered as a page link only.
+        #expect(UpdateChecker.newer(than: "0.1.0", in: body)?.download == nil)
+    }
+
+    @Test func readsTheDMGWithItsChecksum() {
+        let hex = String(repeating: "ab", count: 32)
+        let body = json(#"""
+        {"tag_name":"v0.3.0","html_url":"https://github.com/x/y/releases/tag/v0.3.0","assets":[
+          {"name":"notes.txt","browser_download_url":"https://github.com/x/y/notes.txt","digest":"sha256:\#(hex)"},
+          {"name":"Claudometer-0.3.0.dmg","browser_download_url":"https://github.com/x/y/releases/download/v0.3.0/Claudometer-0.3.0.dmg","digest":"sha256:\#(hex.uppercased())"}
+        ]}
+        """#)
+        let download = UpdateChecker.newer(than: "0.2.0", in: body)?.download
+        #expect(download?.url.lastPathComponent == "Claudometer-0.3.0.dmg")
+        #expect(download?.sha256 == hex)
+        // A DMG without a checksum can't be verified, so it isn't offered for installing.
+        let unverified = json(#"{"tag_name":"v0.3.0","assets":[{"name":"Claudometer-0.3.0.dmg","browser_download_url":"https://github.com/x/y/a.dmg"}]}"#)
+        #expect(UpdateChecker.newer(than: "0.2.0", in: unverified)?.download == nil)
+    }
+
+    @Test func hashesFiles() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("claudometer-sha-\(UUID().uuidString)")
+        try Data("abc".utf8).write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        #expect(try UpdateChecker.sha256(of: file) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
     }
 }
 
@@ -509,5 +534,80 @@ private func json(_ string: String) -> Data { Data(string.utf8) }
             }
         }
         #expect(missing.isEmpty, "Missing in ru.lproj: \(missing)")
+    }
+}
+
+@Suite struct HistoryTests {
+    let start = Date(timeIntervalSince1970: 1_800_000_000)
+
+    private func snapshot(_ t: TimeInterval, session: Double, weekly: Double, weeklyReset: Date? = nil, sessionReset: Date? = nil) -> UsageSnapshot {
+        UsageSnapshot(windows: [
+            LimitWindow(id: "session", group: .session, title: "Session (5h)", utilization: session, resetsAt: sessionReset ?? start.addingTimeInterval(4 * 3600)),
+            LimitWindow(id: "weekly_all", group: .weekly, title: "Weekly · all models", utilization: weekly, resetsAt: weeklyReset ?? start.addingTimeInterval(3 * 86400)),
+        ], fetchedAt: start.addingTimeInterval(t))
+    }
+
+    @Test func mergesCloseReadingsAndTrimsOldOnes() {
+        var history = UsageHistory()
+        for minutes in stride(from: 0.0, through: 60, by: 1) {
+            history.record(snapshot(minutes * 60, session: minutes, weekly: 10))
+        }
+        // One reading per minute for an hour stays a handful of samples.
+        #expect(history.samples.count <= 8)
+        #expect(history.samples.last?.u["session"] == 60)
+        history.record(snapshot(9 * 86400, session: 1, weekly: 1))
+        #expect(history.samples.allSatisfy { start.addingTimeInterval(9 * 86400).timeIntervalSince($0.t) <= 8 * 86400 })
+        // Older readings than the newest are ignored.
+        let count = history.samples.count
+        history.record(snapshot(0, session: 5, weekly: 5))
+        #expect(history.samples.count == count)
+    }
+
+    @Test func usagePerDayCountsAcrossAReset() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let day = calendar.startOfDay(for: start)
+        let firstReset = day.addingTimeInterval(86400 + 12 * 3600)
+        let secondReset = firstReset.addingTimeInterval(7 * 86400)
+        let history = UsageHistory(samples: [
+            .init(t: day.addingTimeInterval(3600), u: ["weekly_all": 50], r: ["weekly_all": firstReset]),
+            .init(t: day.addingTimeInterval(20 * 3600), u: ["weekly_all": 70], r: ["weekly_all": firstReset]),
+            // Next day: the limit reset at noon, then 15 points were used.
+            .init(t: day.addingTimeInterval(86400 + 18 * 3600), u: ["weekly_all": 15], r: ["weekly_all": secondReset]),
+            .init(t: day.addingTimeInterval(86400 + 22 * 3600), u: ["weekly_all": 25], r: ["weekly_all": secondReset]),
+        ])
+        let days = history.dailyUse(windowId: "weekly_all", days: 3, now: day.addingTimeInterval(86400 + 23 * 3600), calendar: calendar)
+        #expect(days.map(\.percent) == [0, 20, 25])
+        #expect(history.daysWithData(windowId: "weekly_all", calendar: calendar) == 2)
+    }
+
+    @Test func forecastsTheLimitAtTheCurrentPace() {
+        let reset = start.addingTimeInterval(3 * 3600)
+        let history = UsageHistory(samples: [
+            .init(t: start.addingTimeInterval(-3600), u: ["session": 60], r: ["session": reset]),
+            .init(t: start.addingTimeInterval(-1800), u: ["session": 70], r: ["session": reset]),
+        ])
+        // 20 points an hour from 80%: the limit in an hour, before the reset in three.
+        let window = LimitWindow(id: "session", group: .session, title: "", utilization: 80, resetsAt: reset)
+        let limit = history.forecast(for: window, at: start)
+        #expect(limit.map { abs($0.timeIntervalSince(start.addingTimeInterval(3600))) < 1 } == true)
+        // The reset comes first at a slower pace.
+        let slow = LimitWindow(id: "session", group: .session, title: "", utilization: 62, resetsAt: reset)
+        #expect(history.forecast(for: slow, at: start) == nil)
+        // Readings from the previous window don't count.
+        let fresh = LimitWindow(id: "session", group: .session, title: "", utilization: 80, resetsAt: reset.addingTimeInterval(5 * 3600))
+        #expect(history.forecast(for: fresh, at: start) == nil)
+        // Idle.
+        let idle = UsageHistory(samples: [.init(t: start.addingTimeInterval(-3600), u: ["session": 80], r: ["session": reset])])
+        #expect(idle.forecast(for: window, at: start) == nil)
+    }
+
+    @Test func survivesRelaunch() throws {
+        var history = UsageHistory()
+        history.record(snapshot(0, session: 10, weekly: 20))
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("claudometer-history-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: file) }
+        HistoryStore(fileURL: file).save(history)
+        #expect(HistoryStore(fileURL: file).load() == history)
     }
 }

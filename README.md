@@ -2,7 +2,7 @@
 
 # Claudometer — unofficial Claude usage meter
 
-A tiny macOS menu bar app (plus a desktop widget) that shows how much of your **Claude plan limits** you've used: the 5‑hour session window and the weekly windows, each with a reset countdown. When another limit runs high (say weekly at 80%), it gets its own lettered ring in the menu bar so you don't miss it, and in Settings you can keep weekly or per-model limits (like Fable) next to the session ring all the time. Click any limit in the popover to copy all your limits as an image.
+A tiny macOS menu bar app (plus a desktop widget) that shows how much of your **Claude plan limits** you've used: the 5‑hour session window and the weekly windows, each with a reset countdown. When another limit runs high (say weekly at 80%), it gets its own lettered ring in the menu bar so you don't miss it, and in Settings you can keep weekly or per-model limits (like Fable) next to the session ring all the time. The popover also charts the last 7 days and, when you're using a limit fast, says when you'd hit it at this pace. Click any limit to copy all your limits as an image. In English or Russian.
 
 > **Unofficial.** Claudometer is an independent open-source project. It is not affiliated with, endorsed by or supported by Anthropic. It relies on an **undocumented** usage endpoint that may change or stop working at any time; if the format changes, the app says "Usage format not recognised" instead of showing wrong numbers.
 
@@ -17,15 +17,15 @@ A tiny macOS menu bar app (plus a desktop widget) that shows how much of your **
 ## What it reads, and what it never does
 
 **Reads**
-- Your **Claude Code login token** from the macOS Keychain item `Claude Code-credentials`, **read-only**. Claudometer never changes, refreshes or deletes it.
+- Your **Claude Code login token** from the macOS Keychain item `Claude Code-credentials`, **read-only**. Claudometer never changes or deletes it.
 - Your usage from `api.anthropic.com/api/oauth/usage`, the same account endpoint Claude Code uses.
-- It saves only the last usage numbers (percentages and reset times, no token) to `~/Library/Application Support/Claudometer/`, so the widget can show them.
+- It saves only usage numbers (the last percentages and reset times, plus about a week of history for the chart; no token) to `~/Library/Application Support/Claudometer/`, so the widget can show them.
 - *Optional, off by default:* a claude.ai `sessionKey` you paste in yourself (see [claude.ai backup](#optional-claudeai-backup)).
 
 **Never**
 - Never writes a token or key to disk, `UserDefaults`, logs or the widget's folder. Tokens stay in memory; the optional session key lives only in Claudometer's own Keychain item.
 - Never logs credentials or usage.
-- Never talks to any server except Anthropic (`api.anthropic.com`, and `claude.ai` only if you enable the backup) and GitHub (`api.github.com`, a daily anonymous check for new releases).
+- Never talks to any server except Anthropic (`api.anthropic.com`, and `claude.ai` only if you enable the backup) and GitHub (`api.github.com`, a daily anonymous check for new releases, and `github.com` when you install an update).
 - No analytics, no telemetry, no third-party services.
 
 The code is short and open, so you can check all of this yourself: [`CredentialsProvider`](Sources/ClaudometerCore/CredentialsProvider.swift), [`UsageAPIClient`](Sources/ClaudometerCore/UsageAPIClient.swift), [`UsageService`](Sources/ClaudometerCore/UsageService.swift).
@@ -45,25 +45,32 @@ The full specification is in [TZ.md](TZ.md).
 
 Building it yourself (below) is the most transparent option. Prebuilt, ad-hoc signed builds are also available:
 
-Download the latest `Claudometer-x.y.z.dmg` from [Releases](https://github.com/Faithful-developer/claudometer/releases) and drag the app to Applications.
-Claudometer checks for new releases once a day and shows **Update Available** in the menu; *Settings → About* has **Check for Updates**.
+```bash
+brew install --cask faithful-developer/tap/claudometer
+# or, without Homebrew:
+curl -fsSL https://raw.githubusercontent.com/Faithful-developer/claudometer/main/scripts/install.sh | bash
+```
+
+Both download the latest release, check it against the SHA-256 GitHub publishes, and install it to Applications without the Gatekeeper step below. You can also download `Claudometer-x.y.z.dmg` from [Releases](https://github.com/Faithful-developer/claudometer/releases) and drag the app to Applications.
+
+**Updates:** Claudometer checks for new releases once a day, shows a dot on the menu bar icon and sends one notification per version. From the release after 0.2.0, **Install Update** in the menu (or *Settings → About*) downloads, verifies and installs it, then restarts the app.
 
 ### "Claudometer can't be opened" on first launch
 
-The prebuilt app is not signed with an Apple Developer ID and not notarized (that needs a paid developer account, which this project doesn't have), so Gatekeeper blocks it the first time. Either:
+Only for a DMG downloaded in a browser. The prebuilt app is not signed with an Apple Developer ID and not notarized (that needs a paid developer account, which this project doesn't have), so Gatekeeper blocks it the first time. Either:
 
 1. Try to open the app once, then go to **System Settings → Privacy & Security**, scroll down to the message about Claudometer and click **Open Anyway**. Confirm with your password or Touch ID. Only needed once per version.
 2. Or clear the quarantine flag in Terminal: `xattr -dr com.apple.quarantine /Applications/Claudometer.app`
 
-Updates downloaded from Releases go through the same step. If you'd rather not trust a prebuilt binary, build it yourself below: the build is ad-hoc signed on your Mac, so Gatekeeper never asks.
+Homebrew, the install script and **Install Update** skip this step. If you'd rather not trust a prebuilt binary, build it yourself below: the build is ad-hoc signed on your Mac, so Gatekeeper never asks.
 
 ## Build & run (no Xcode needed)
 
 ```bash
 scripts/build-app.sh             # → build/Claudometer.app (universal, ad-hoc signed)
 scripts/build-app.sh --install   # copy to /Applications and launch
-scripts/build-app.sh --dmg       # also package build/Claudometer-<version>.dmg
-scripts/test.sh                  # unit tests (clean build; works around a CLT macro-plugin bug)
+scripts/build-app.sh --dmg       # also package build/Claudometer-<version>.dmg (designed window)
+scripts/test.sh                  # unit tests (clean build; works around CLT macro-plugin bugs)
 ```
 
 Swift Package Manager builds the menu bar app with only the Command Line Tools installed.
@@ -90,13 +97,16 @@ Claude Code refreshes its login only while it's running, so after about 8 hours 
 
 | Piece | What it does |
 |---|---|
-| `CredentialsProvider` | Reads Claude Code's OAuth token from the Keychain item `Claude Code-credentials` (read-only; never stored or logged) |
+| `CredentialsProvider` | Reads Claude Code's OAuth token from the Keychain item `Claude Code-credentials` through `/usr/bin/security` (read-only; never stored or logged) |
 | `ClaudeWebClient` | Backup source: claude.ai's usage API with the `sessionKey` cookie you paste in *Settings → Login*. Used only while Claude Code's login is expired (Claude Code refreshes it only while running) |
 | `UsageAPIClient` | `GET https://api.anthropic.com/api/oauth/usage` with `anthropic-beta: oauth-2025-04-20` |
 | `UsageDecoder` | Tolerant parsing. Prefers the `limits` array and falls back to the legacy `five_hour` / `seven_day*` keys. Unknown limit kinds are still shown |
 | `UsageStore` | Polls every 5 min by default (1–30). Backs off exponentially on errors (1→2→4→8→15 min), honours `Retry-After`, and refreshes on wake or when the network comes back |
-| `NotificationManager` | Optional alerts at 80% / 95% (once per window per reset cycle) and when a limit resets |
-| `SnapshotStore` | Last known state as JSON (`~/Library/Application Support/Claudometer/`, or the App Group in the widget build). Contains no token |
+| `UsageHistory` | About a week of compact samples for the 7-day chart and the "at this pace" forecast |
+| `NotificationManager` | Optional alerts at 80% / 95% (once per window per reset cycle) and when a limit resets; when usage stops updating (right away if you need to act, otherwise after 30 min); once per new version |
+| `UpdateChecker` / `UpdateInstaller` | Daily check of GitHub Releases. **Install Update** downloads the DMG, checks its SHA-256 and code signature, swaps the app and relaunches |
+| `SnapshotStore` | Last known state and history as JSON in `~/Library/Application Support/Claudometer/`, which the widget reads. Contains no token |
+| `L10n` | All UI text, English and Russian (`Resources/Localization`). Follows macOS or *Settings → General → Language* |
 
 ## Project layout
 
@@ -105,7 +115,9 @@ Sources/ClaudometerCore/   models, decoder, API client, Keychain, backoff, thres
 Sources/Claudometer/       SwiftUI menu bar app (MenuBarExtra), settings, notifications
 Widget/                    WidgetKit extension (built via project.yml / Xcode)
 Tests/                     swift-testing unit tests + real response fixture
-scripts/                   build-app.sh, make-icon.swift
+Resources/                 app icon, Localization/{en,ru}.lproj, DMG/background.tiff
+scripts/                   build-app.sh, build-xcode.sh, test.sh, release.sh, install.sh,
+                           make-dmg.sh, dmg/ (DMG artwork source), make-icon.swift
 Config/                    entitlements for the Xcode build
 TZ.md                      technical specification
 ```
@@ -115,6 +127,7 @@ TZ.md                      technical specification
 Claudometer follows Apple's Human Interface Guidelines and looks like a built-in menu bar extra (Battery, Wi‑Fi, Control Center):
 - **System look:** the window keeps the system material. Text uses hierarchical `.primary`/`.secondary`/`.tertiary` styles, so it picks up vibrancy, light/dark mode and Increase Contrast.
 - **Light and dark:** follows the system by default. *Settings → General → Appearance* can pin Light or Dark.
+- **Language:** English or Russian, following macOS unless *Settings → General → Language* picks one. The widget follows the app.
 - **Colours:** from the Claudometer palette ([docs/palette.html](docs/palette.html)). Meters use Meter Coral; Attention amber and Over-limit red take over near limits; status pills (On track / Ahead of pace / Getting close / Near limit) use each status colour on its soft tint. Dark mode uses matching dark steps of the same hues.
 - **Warnings:** system orange and red appear only above your thresholds, always with an SF Symbol and a label.
 - **Menu bar icon:** monochrome like other system icons until usage needs attention.
@@ -126,9 +139,12 @@ Claudometer follows Apple's Human Interface Guidelines and looks like a built-in
 
 ## Developer notes
 
-- `Claudometer --render-previews <dir> [--sample high|rings|pinned|stale|signedout]` renders the menu bar icon, popover and all three widget sizes (light and dark) to PNGs, then exits. It uses the cached state, or made-up numbers: `--sample high` for high usage, `--sample rings` for two other limits high enough to get extra menu bar rings, `--sample pinned` for weekly and Fable added to the menu bar. It's used for the screenshots above.
+- `Claudometer --render-previews <dir> [--sample high|rings|pinned|stale|expired|signedout] [--language ru]` renders the menu bar icon, popover, settings and all three widget sizes (light and dark) to PNGs, then exits. It uses the cached state, or made-up numbers: `--sample high` for high usage, `--sample rings` for two other limits high enough to get extra menu bar rings, `--sample pinned` for weekly and Fable added to the menu bar. It's used for the screenshots above.
+- UI text goes through `tr("English text")`; add the Russian to `Resources/Localization/ru.lproj` (a test fails on missing keys).
 - `swift scripts/make-icon.swift` regenerates `Resources/AppIcon.icns`.
-- `scripts/release.sh 0.2.0 "notes"` builds the app with the widget, packages a DMG, tags `v0.2.0` and publishes the GitHub release. Always bump the version: the in-app update check compares it with the latest release.
+- `scripts/release.sh 0.2.0 "notes"` builds the app with the widget, packages a DMG, tags `v0.2.0`, publishes the GitHub release and bumps the cask in [Faithful-developer/homebrew-tap](https://github.com/Faithful-developer/homebrew-tap). Always bump the version: the in-app update check compares it with the latest release.
+- `scripts/make-dmg.sh` lays out the DMG window through Finder: the first run asks to let Terminal control Finder (and uses Accessibility, if allowed, to size the window exactly). The artwork is `scripts/dmg/background.html`; `scripts/dmg/render-background.sh` regenerates `Resources/DMG/background.tiff` (needs Chrome) and `scripts/dmg/mock.sh` previews it with Finder's light and dark labels.
+- `Claudometer --install-update` installs whatever the first update check finds, for testing the update path from a build with a lower `VERSION`.
 - Notifications and launch at login only work from the bundled `.app`, not from `swift run`.
 
 ## License

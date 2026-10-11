@@ -57,6 +57,12 @@ struct PopoverView: View {
         let stale = store.state.isStale
         let hero = snapshot?.window(for: MenuBarMetric(rawValue: metric) ?? .session)
         let others = snapshot?.windows.filter { $0.id != hero?.id } ?? []
+        // Pace forecast from the history, measured up to the reading itself; never on old data.
+        let forecast: (LimitWindow) -> Date? = { window in
+            guard !stale, let fetched = snapshot?.fetchedAt else { return nil }
+            return store.history.forecast(for: window, at: fetched)
+        }
+        let weeklyId = snapshot?.weekly?.id ?? "weekly_all"
 
         VStack(alignment: .leading, spacing: 0) {
             if let error = store.state.error {
@@ -74,7 +80,7 @@ struct PopoverView: View {
                 CopyableLimit { scheme in
                     LimitImage.copy(snapshot: snapshot, stale: stale, now: now, colorScheme: scheme)
                 } content: {
-                    HeroRow(window: hero, level: level(hero), stale: stale, now: now)
+                    HeroRow(window: hero, level: level(hero), stale: stale, now: now, forecast: forecast(hero))
                 }
                 .padding(.horizontal, 14).padding(.vertical, 8)
             } else if store.state.error == nil {
@@ -94,12 +100,29 @@ struct PopoverView: View {
                         CopyableLimit(bleedY: 4) { scheme in
                             LimitImage.copy(snapshot: snapshot, stale: stale, now: now, colorScheme: scheme)
                         } content: {
-                            LimitRow(window: window, level: level(window), stale: stale, now: now)
+                            LimitRow(window: window, level: level(window), stale: stale, now: now, forecast: forecast(window))
                         }
                     }
                     if (snapshot?.windows ?? []).contains(where: { $0.elapsedFraction(now: now) != nil }) {
                         PaceLegend()
                     }
+                }
+                .padding(.horizontal, 14).padding(.vertical, 8)
+            }
+
+            // Usage per day of the weekly limit, once there's more than a day of history.
+            if snapshot != nil, store.history.daysWithData(windowId: weeklyId) >= 2 {
+                let days = store.history.dailyUse(windowId: weeklyId, now: now)
+                MenuDivider()
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline) {
+                        SectionHeader(tr("Weekly Limit by Day"))
+                        Spacer()
+                        Text(tr("Today %@", Formatters.percent(days.last?.percent ?? 0)))
+                            .font(.system(size: 11).monospacedDigit())
+                            .foregroundStyle(Ink.secondary)
+                    }
+                    DailyBars(days: days)
                 }
                 .padding(.horizontal, 14).padding(.vertical, 8)
             }
@@ -112,6 +135,35 @@ struct PopoverView: View {
                     BreakdownChart(rows: breakdown, dimmed: stale)
                 }
                 .padding(.horizontal, 14).padding(.vertical, 8)
+            }
+        }
+    }
+
+    /// One click installs the update in place and relaunches; the release page is the fallback
+    /// when that isn't possible or failed.
+    @ViewBuilder
+    private func updateRow(_ release: AppRelease) -> some View {
+        switch updates.installState {
+        case .downloading(let fraction):
+            MenuRow(title: tr("Downloading Update… %lld%%", Int(fraction * 100)), shortcut: nil) {}
+                .disabled(true)
+        case .installing:
+            MenuRow(title: tr("Installing Update…"), shortcut: nil) {}
+                .disabled(true)
+        case .failed(let message):
+            MenuRow(title: tr("Download Update %@…", release.version), shortcut: nil) { updates.openDownload() }
+            Text(message)
+                .font(.system(size: 11))
+                .foregroundStyle(Ink.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 14)
+                .padding(.bottom, 4)
+        case .idle:
+            if updates.canInstall {
+                MenuRow(title: tr("Install Update %@", release.version), shortcut: nil) { updates.installUpdate() }
+            } else {
+                MenuRow(title: tr("Update Available: %@…", release.version), shortcut: nil) { updates.openDownload() }
             }
         }
     }
@@ -140,7 +192,7 @@ struct PopoverView: View {
                 .padding(.bottom, 4)
             }
             if let release = updates.available {
-                MenuRow(title: tr("Update Available: %@…", release.version), shortcut: nil) { updates.openDownload() }
+                updateRow(release)
             }
             MenuRow(title: tr("Refresh Now"), shortcut: "⌘R") { store.refresh() }
                 .keyboardShortcut("r")
@@ -172,6 +224,8 @@ struct HeroRow: View {
     let level: UsageLevel
     let stale: Bool
     let now: Date
+    /// When the limit runs out at the current pace, if before the reset.
+    var forecast: Date? = nil
 
     var body: some View {
         HStack(spacing: 14) {
@@ -189,6 +243,11 @@ struct HeroRow: View {
                 Text(Formatters.resetText(window.resetsAt, now: now))
                     .font(.system(size: 12))
                     .foregroundStyle(Ink.secondary)
+                if let forecast {
+                    Text(Formatters.forecastText(forecast, now: now))
+                        .font(.system(size: 11))
+                        .foregroundStyle(Ink.secondary)
+                }
                 StatusLabel(level: level, pace: window.pace(now: now), stale: stale).padding(.top, 2)
             }
             Spacer(minLength: 0)
@@ -206,6 +265,7 @@ struct LimitRow: View {
     let level: UsageLevel
     let stale: Bool
     let now: Date
+    var forecast: Date? = nil
     @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
@@ -230,9 +290,11 @@ struct LimitRow: View {
                 elapsed: window.elapsedFraction(now: now),
                 halo: Palette.canvas
             )
-            Text(Formatters.resetText(window.resetsAt, now: now))
+            Text([Formatters.resetText(window.resetsAt, now: now), forecast.map { Formatters.forecastText($0, now: now) }]
+                .compactMap { $0 }.joined(separator: " · "))
                 .font(.system(size: 11))
                 .foregroundStyle(Ink.tertiary(contrast))
+                .lineLimit(2)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Formatters.accessibilityLabel(window, level: level, stale: stale, now: now))

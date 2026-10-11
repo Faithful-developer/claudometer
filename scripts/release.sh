@@ -32,6 +32,26 @@ scripts/make-dmg.sh "$APP" "$DMG" "Claudometer $VERSION"
 echo "▸ Publishing $TAG"
 git tag -a "$TAG" -m "Claudometer $VERSION"
 git push origin main "$TAG"
-INSTALL_NOTE=$'\n\n### Install\n1. Open the DMG and drag **Claudometer** to **Applications**.\n2. The app is not notarized, so the first launch is blocked. Open **System Settings → Privacy & Security** and click **Open Anyway** (or run `xattr -dr com.apple.quarantine /Applications/Claudometer.app`).\n3. Add the widget: right-click the desktop → **Edit Widgets…** → search "Claudometer".'
+INSTALL_NOTE=$'\n\n### Install\n- **Already have Claudometer (newer than 0.2.0)?** Click **Install Update** in its menu.\n- **Homebrew:** `brew install --cask faithful-developer/tap/claudometer`\n- **Terminal:** `curl -fsSL https://raw.githubusercontent.com/Faithful-developer/claudometer/main/scripts/install.sh | bash`\n- **DMG:** open it and drag **Claudometer** to **Applications**. The app is not notarized, so the first launch is blocked: open **System Settings → Privacy & Security** and click **Open Anyway**.\n\nAdd the widget: right-click the desktop → **Edit Widgets…** → search "Claudometer".'
 gh release create "$TAG" "$DMG" --title "Claudometer $VERSION" --notes "${NOTES:-Claudometer $VERSION}${INSTALL_NOTE}"
 echo "✓ Released $TAG"
+
+# Homebrew: point the cask in Faithful-developer/homebrew-tap at this release. A failure
+# here doesn't undo the release; it says how to do it by hand.
+echo "▸ Updating the Homebrew cask"
+bump_cask() {
+    local tap sha
+    tap="$(mktemp -d)"
+    trap 'rm -rf "$tap"' RETURN
+    sha="$(gh release view "$TAG" --json assets -q '.assets[] | select(.name | endswith(".dmg")) | .digest' | sed 's/^sha256://')"
+    [[ "$sha" =~ ^[0-9a-f]{64}$ ]] || sha="$(shasum -a 256 "$DMG" | awk '{print $1}')"
+    gh repo clone Faithful-developer/homebrew-tap "$tap" -- --quiet || return 1
+    sed -i '' -E "s/^  version \".*\"/  version \"$VERSION\"/; s/^  sha256 \".*\"/  sha256 \"$sha\"/" "$tap/Casks/claudometer.rb"
+    git -C "$tap" commit -qam "claudometer $VERSION" || return 1
+    git -C "$tap" push -q origin HEAD || return 1
+}
+if bump_cask; then
+    echo "✓ Cask updated to $VERSION"
+else
+    echo "⚠︎ Couldn't update the cask. Edit version and sha256 in Faithful-developer/homebrew-tap/Casks/claudometer.rb by hand."
+fi
