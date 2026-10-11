@@ -262,6 +262,19 @@ struct LoginSettings: View {
                             Button("Remove") { model.remove(store: store) }
                         }
                     }
+                    if model.isPaused {
+                        HStack(spacing: 8) {
+                            Label {
+                                Text("Keychain access was denied, so the backup is paused.").foregroundStyle(Ink.secondary)
+                            } icon: {
+                                Image(systemName: "key.fill").foregroundStyle(Palette.warningGlyph)
+                            }
+                            Spacer(minLength: 8)
+                            Button("Try Again") { model.resume(store: store) }
+                                .help("Asks for Keychain access once more. Choose “Always Allow” to stop the prompts.")
+                        }
+                        .font(.callout)
+                    }
                 }
                 SecureField(model.hasKey ? "Replace key" : "Session key", text: $model.draft, prompt: Text("sk-ant-sid…"))
                 HStack(spacing: 8) {
@@ -292,6 +305,8 @@ struct LoginSettings: View {
         }
         .formStyle(.grouped)
         .fixedSize(horizontal: false, vertical: true)
+        // A fetch in the background may have just paused the backup.
+        .onChange(of: store.state) { model.reload() }
     }
 
     private var sourceText: String {
@@ -305,6 +320,7 @@ struct LoginSettings: View {
 final class SessionKeyModel: ObservableObject {
     @Published var draft = ""
     @Published private(set) var hasKey = SessionKeyStore().hasKey
+    @Published private(set) var isPaused = SessionKeyStore().isPaused
     @Published private(set) var isTesting = false
     @Published private(set) var result: (ok: Bool, text: String)?
 
@@ -319,6 +335,7 @@ final class SessionKeyModel: ObservableObject {
                 let snapshot = try await store.saveSessionKey(key)
                 draft = ""
                 hasKey = true
+                isPaused = false
                 let session = snapshot.session.map { " · Session \(Formatters.percent($0.utilization))" } ?? ""
                 let plan = Formatters.planName(snapshot.plan).map { " · \($0) plan" } ?? ""
                 result = (true, "Works\(plan)\(session)")
@@ -341,7 +358,19 @@ final class SessionKeyModel: ObservableObject {
     func remove(store: UsageStore) {
         store.removeSessionKey()
         hasKey = false
+        isPaused = false
         result = nil
+    }
+
+    func resume(store: UsageStore) {
+        store.resumeSessionKey()
+        isPaused = false
+    }
+
+    func reload() {
+        let keys = SessionKeyStore()
+        hasKey = keys.hasKey
+        isPaused = keys.isPaused
     }
 }
 

@@ -31,7 +31,7 @@ public struct UsageService: Sendable {
             if creds.isExpired { throw AppError.tokenExpired }
             return try await client.fetchUsage(token: creds.accessToken).withPlan(creds.plan).withSource(.claudeCode)
         } catch let error as AppError where error.allowsWebFallback {
-            guard let key = sessionKeys.load() else { throw error }
+            guard let key = sessionKeys.loadForPolling() else { throw error }
             let snapshot = try await web.fetchUsage(sessionKey: key)
             return snapshot.plan == nil ? snapshot.withPlan(plan) : snapshot
         }

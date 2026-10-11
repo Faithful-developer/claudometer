@@ -60,25 +60,13 @@ public struct CredentialsProvider: Sendable {
     }
 
     private func readViaSecurityTool() -> Result<Data, AppError> {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
-        process.arguments = ["find-generic-password", "-s", Self.keychainService, "-w"]
-        let output = Pipe()
-        process.standardOutput = output
-        process.standardError = FileHandle.nullDevice
-        do {
-            try process.run()
-        } catch {
+        guard let output = SecurityTool.run(["find-generic-password", "-s", Self.keychainService, "-w"]) else {
             return .failure(.keychainDenied)
         }
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            // 44 == errSecItemNotFound
-            return .failure(process.terminationStatus == 44 ? .notSignedIn : .keychainDenied)
+        guard output.status == 0 else {
+            return .failure(output.status == SecurityTool.itemNotFound ? .notSignedIn : .keychainDenied)
         }
-        let trimmed = data.trimmingTrailingNewlines()
-        return trimmed.isEmpty ? .failure(.notSignedIn) : .success(trimmed)
+        return output.data.isEmpty ? .failure(.notSignedIn) : .success(output.data)
     }
 
     private func readViaSecurityFramework() throws -> Data {
@@ -99,13 +87,5 @@ public struct CredentialsProvider: Sendable {
         default:
             throw AppError.keychainDenied
         }
-    }
-}
-
-private extension Data {
-    func trimmingTrailingNewlines() -> Data {
-        var copy = self
-        while let last = copy.last, last == 0x0A || last == 0x0D { copy.removeLast() }
-        return copy
     }
 }

@@ -94,6 +94,12 @@ final class UsageStore {
         return snapshot
     }
 
+    /// Settings → Try Again after a denied Keychain prompt: asks once more on the next fetch.
+    func resumeSessionKey() {
+        SessionKeyStore().isPaused = false
+        restartPolling()
+    }
+
     func removeSessionKey() {
         SessionKeyStore().delete()
         restartPolling()
