@@ -12,7 +12,7 @@ options:
 settings:
   base:
     DEVELOPMENT_TEAM: ""            # ← your Team ID
-    MARKETING_VERSION: "0.1.4"     # keep in step with the latest release; scripts/release.sh overrides it
+    MARKETING_VERSION: "0.2.0"     # keep in step with the latest release; scripts/release.sh overrides it
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_VERSION: "5.0"
     CODE_SIGN_STYLE: Automatic
