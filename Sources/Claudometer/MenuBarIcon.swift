@@ -32,7 +32,8 @@ enum MenuBarIcon {
     private static let font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
     private static let letterFont = NSFont.systemFont(ofSize: 7, weight: .bold)
 
-    static func image(primary: Ring, extras: [Ring], stale: Bool, compact: Bool, now: Date = Date()) -> NSImage {
+    /// - Parameter updateBadge: a dot on the primary ring while a new version is waiting.
+    static func image(primary: Ring, extras: [Ring], stale: Bool, compact: Bool, updateBadge: Bool = false, now: Date = Date()) -> NSImage {
         let rings = [primary] + extras
         let width = rings.map { ringWidth($0, compact: compact) }.reduce(0, +) + ringGap * CGFloat(extras.count)
 
@@ -42,14 +43,28 @@ enum MenuBarIcon {
                 draw(ring, at: x, stale: stale, compact: compact)
                 x += ringWidth(ring, compact: compact) + ringGap
             }
+            if updateBadge { drawBadge() }
             return true
         }
         // Template (monochrome, tinted by the system like other menu bar icons) unless there
         // is a warning to show in colour.
         image.isTemplate = stale || rings.allSatisfy { $0.level == .ok || $0.level == .unknown }
         image.accessibilityDescription = ([accessibilityDescription(utilization: primary.utilization, level: primary.level, stale: stale, resetsAt: primary.resetsAt, now: now)]
-            + extras.map { extraDescription($0, stale: stale, now: now) }).joined(separator: ". ")
+            + extras.map { extraDescription($0, stale: stale, now: now) }
+            + (updateBadge ? [tr("Update available")] : [])).joined(separator: ". ")
         return image
+    }
+
+    /// Top-right of the primary ring, cut out of it like a system badge. Plain ink, so the
+    /// icon stays a template image.
+    private static func drawBadge() {
+        let size: CGFloat = 5
+        let dot = NSRect(x: 1 + ringSize - size + 0.5, y: height - (height - ringSize) / 2 - size - 0.5, width: size, height: size)
+        NSGraphicsContext.current?.compositingOperation = .clear
+        NSBezierPath(ovalIn: dot.insetBy(dx: -1.25, dy: -1.25)).fill()
+        NSGraphicsContext.current?.compositingOperation = .sourceOver
+        NSColor.labelColor.setFill()
+        NSBezierPath(ovalIn: dot).fill()
     }
 
     private static func text(_ ring: Ring) -> String { ring.utilization.map(Formatters.percent) ?? "—" }
@@ -98,17 +113,17 @@ enum MenuBarIcon {
 
     /// "Claude usage 91 percent, near limit, Resets in 2h 40m".
     static func accessibilityDescription(utilization: Double?, level: UsageLevel, stale: Bool, resetsAt: Date?, now: Date) -> String {
-        guard let utilization else { return "Claude usage unavailable" }
-        var parts = ["Claude usage \(Int(max(utilization, 0).rounded())) percent"]
-        if let label = Formatters.levelLabel(level) { parts.append(stale ? "last known \(label)" : label) }
-        parts.append(stale ? "out of date" : Formatters.resetText(resetsAt, now: now))
+        guard let utilization else { return tr("Claude usage unavailable") }
+        var parts = [tr("Claude usage %lld percent", Int(max(utilization, 0).rounded()))]
+        if let label = Formatters.levelLabel(level) { parts.append(stale ? tr("last known %@", label) : label) }
+        parts.append(stale ? tr("out of date") : Formatters.resetText(resetsAt, now: now))
         return parts.joined(separator: ", ")
     }
 
     /// "Weekly Fable 80 percent, near limit, Resets Sat 10:59".
     private static func extraDescription(_ ring: Ring, stale: Bool, now: Date) -> String {
-        var parts = ["\(ring.title.replacingOccurrences(of: " · ", with: " ")) \(Int(max(ring.utilization ?? 0, 0).rounded())) percent"]
-        if let label = Formatters.levelLabel(ring.level) { parts.append(stale ? "last known \(label)" : label) }
+        var parts = [tr("%@ %lld percent", ring.title.replacingOccurrences(of: " · ", with: " "), Int(max(ring.utilization ?? 0, 0).rounded()))]
+        if let label = Formatters.levelLabel(ring.level) { parts.append(stale ? tr("last known %@", label) : label) }
         if !stale { parts.append(Formatters.resetText(ring.resetsAt, now: now)) }
         return parts.joined(separator: ", ")
     }

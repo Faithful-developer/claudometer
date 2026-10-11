@@ -85,8 +85,11 @@ struct WidgetView: View {
     let entry: UsageEntry
 
     var body: some View {
+        let style = Self.style
+        // Same language as the app, even when it differs from the macOS one.
+        let _ = L10n.resolve(style.language)
         UsageWidgetContent(
-            size: size, state: entry.state, now: entry.date, style: Self.style,
+            size: size, state: entry.state, now: entry.date, style: style,
             refreshControl: AnyView(
                 Button(intent: RefreshUsageIntent()) { RefreshGlyph() }
                     .buttonStyle(.plain)

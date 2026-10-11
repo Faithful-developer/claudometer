@@ -140,3 +140,33 @@ public struct ThresholdTracker: Codable, Sendable {
         }
     }
 }
+
+/// Decides when to alert that usage has stopped updating: right away for errors the user has
+/// to fix, after `grace` for ones that usually clear up by themselves. Alerts once per
+/// outage, however often the fetch is retried.
+public struct OutageTracker: Codable, Equatable, Sendable {
+    public enum Event: Hashable, Sendable {
+        case stopped(AppError)
+        /// Fetching works again after an alert.
+        case recovered
+    }
+
+    public static let grace: TimeInterval = 30 * 60
+
+    public private(set) var failingSince: Date?
+    public private(set) var alerted = false
+
+    public init() {}
+
+    public mutating func record(error: AppError?, now: Date = Date()) -> Event? {
+        guard let error else {
+            defer { self = OutageTracker() }
+            return alerted ? .recovered : nil
+        }
+        let since = failingSince ?? now
+        failingSince = since
+        guard !alerted, error.needsUserAction || now.timeIntervalSince(since) >= Self.grace else { return nil }
+        alerted = true
+        return .stopped(error)
+    }
+}

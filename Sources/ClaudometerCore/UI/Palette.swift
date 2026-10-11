@@ -85,8 +85,8 @@ public enum Palette {
     /// Short words that go with the status symbol, so state is never colour alone.
     public static func label(for level: UsageLevel) -> String? {
         switch level {
-        case .warning: return "Getting close"
-        case .critical: return "Near limit"
+        case .warning: return tr("Getting close")
+        case .critical: return tr("Near limit")
         case .ok, .unknown: return nil
         }
     }

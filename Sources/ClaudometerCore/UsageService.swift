@@ -24,6 +24,7 @@ public struct UsageService: Sendable {
     }
 
     public func fetch() async throws -> UsageSnapshot {
+        sessionKeys.migrateLegacyKey()
         var plan: String?
         do {
             let creds = try loadCredentials()

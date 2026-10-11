@@ -3,7 +3,8 @@ import ClaudometerCore
 import Foundation
 import Observation
 
-/// Checks GitHub Releases at launch and once a day; the popover and About tab show the result.
+/// Checks GitHub Releases at launch and once a day; the popover, About tab and a dot on the
+/// menu bar icon show the result, and each new version is announced once in a notification.
 @MainActor
 @Observable
 final class UpdateStore {
@@ -32,18 +33,29 @@ final class UpdateStore {
     func check(manual: Bool) async {
         // `swift run` has no bundle version; don't offer every release as an update.
         guard Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") != nil else {
-            if manual { lastResult = "Update checks need the bundled app." }
+            if manual { lastResult = tr("Update checks need the bundled app.") }
             return
         }
         isChecking = true
         defer { isChecking = false }
         do {
             available = try await checker.check(currentVersion: Self.currentVersion)
-            if manual { lastResult = available.map { "Version \($0.version) is available." } ?? "You're up to date." }
+            if let available { announce(available, notify: !manual) }
+            if manual { lastResult = available.map { tr("Version %@ is available.", $0.version) } ?? tr("You’re up to date.") }
         } catch {
             // Background checks fail quietly (offline etc.); only a manual check reports it.
-            if manual { lastResult = "Couldn't check for updates." }
+            if manual { lastResult = tr("Couldn’t check for updates.") }
         }
+    }
+
+    /// Once per version: a relaunch, restart or the next daily check doesn't repeat it. A
+    /// manual check counts as seen, since About already shows the result.
+    private func announce(_ release: AppRelease, notify: Bool) {
+        let defaults = UserDefaults.standard
+        guard defaults.string(forKey: SettingsKey.notifiedUpdateVersion) != release.version else { return }
+        defaults.set(release.version, forKey: SettingsKey.notifiedUpdateVersion)
+        guard notify, AppSettings.current.notifyUpdates, NotificationManager.isAvailable else { return }
+        NotificationManager.sendUpdate(release)
     }
 
     func openDownload() {

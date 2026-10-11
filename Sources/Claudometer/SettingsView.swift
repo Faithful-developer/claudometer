@@ -5,20 +5,33 @@ import SwiftUI
 
 /// Settings window (TZ FR-22), laid out like system apps: toolbar tabs with grouped forms.
 struct SettingsView: View {
+    @AppStorage(SettingsKey.settingsTab) private var tab = SettingsTab.general
+    @AppStorage(SettingsKey.language) private var language = "system"
+
     var body: some View {
-        TabView {
+        TabView(selection: $tab) {
             GeneralSettings()
-                .tabItem { Label("General", systemImage: "gearshape") }
+                .tabItem { Label(tr("General"), systemImage: "gearshape") }
+                .tag(SettingsTab.general)
             NotificationSettings()
-                .tabItem { Label("Notifications", systemImage: "bell.badge") }
+                .tabItem { Label(tr("Notifications"), systemImage: "bell.badge") }
+                .tag(SettingsTab.notifications)
             LoginSettings()
-                .tabItem { Label("Login", systemImage: "person.badge.key") }
+                .tabItem { Label(tr("Login"), systemImage: "person.badge.key") }
+                .tag(SettingsTab.login)
             AboutSettings()
-                .tabItem { Label("About", systemImage: "info.circle") }
+                .tabItem { Label(tr("About"), systemImage: "info.circle") }
+                .tag(SettingsTab.about)
         }
+        // Rebuilt in a new language; `tr` reads it when the views are created.
+        .id(language)
         .frame(width: 460)
         .onHostingWindow(SettingsWindow.attach)
     }
+}
+
+enum SettingsTab: String {
+    case general, notifications, login, about
 }
 
 /// Keeps the Settings window on the user's current desktop and in front of other apps.
@@ -26,9 +39,20 @@ struct SettingsView: View {
 @MainActor
 enum SettingsWindow {
     private static weak var window: NSWindow?
+    /// Kept from the menu bar label (always on screen), so code outside SwiftUI views, like
+    /// a widget click, can open Settings too.
+    static var openAction: OpenSettingsAction?
+
+    /// Opens Settings without a view at hand; see `openAction`.
+    static func open(tab: SettingsTab) {
+        guard let openAction else { return }
+        open(openAction, tab: tab)
+    }
 
     /// Settings… in the menu: open the window, or reuse the open one, and bring it forward.
-    static func open(_ openSettings: OpenSettingsAction) {
+    /// With `tab`, switches to that tab (also in a window that's already open).
+    static func open(_ openSettings: OpenSettingsAction, tab: SettingsTab? = nil) {
+        if let tab { UserDefaults.standard.set(tab.rawValue, forKey: SettingsKey.settingsTab) }
         activate()
         openSettings()
         // Close the menu first: if focus goes back to the previous app, its windows come up,
@@ -71,6 +95,7 @@ enum SettingsWindow {
 struct GeneralSettings: View {
     @Environment(UsageStore.self) private var store
     @AppStorage(SettingsKey.appearance) private var appearance = AppAppearance.system.rawValue
+    @AppStorage(SettingsKey.language) private var language = "system"
     @AppStorage(SettingsKey.refreshMinutes) private var refreshMinutes = 5
     @AppStorage(SettingsKey.menuBarMetric) private var metric = MenuBarMetric.session.rawValue
     @AppStorage(SettingsKey.compactMenuBar) private var compact = false
@@ -104,11 +129,16 @@ struct GeneralSettings: View {
     var body: some View {
         Form {
             Section {
-                Picker("Appearance", selection: $appearance) {
+                Picker(tr("Appearance"), selection: $appearance) {
                     ForEach(AppAppearance.allCases) { Text($0.title).tag($0.rawValue) }
                 }
                 .pickerStyle(.segmented)
-                Toggle("Open at Login", isOn: Binding(get: { loginItem.isEnabled }, set: { loginItem.set($0) }))
+                Picker(tr("Language"), selection: Binding(get: { language }, set: { AppSettings.setLanguage($0) })) {
+                    Text(tr("Same as macOS")).tag("system")
+                    Text(verbatim: "English").tag("en")
+                    Text(verbatim: "Русский").tag("ru")
+                }
+                Toggle(tr("Open at Login"), isOn: Binding(get: { loginItem.isEnabled }, set: { loginItem.set($0) }))
                 if let error = loginItem.error {
                     Label {
                         Text(error).foregroundStyle(Ink.secondary)
@@ -120,13 +150,13 @@ struct GeneralSettings: View {
             }
 
             Section {
-                Picker("Show", selection: $metric) {
+                Picker(tr("Show"), selection: $metric) {
                     ForEach(MenuBarMetric.allCases) { Text($0.title).tag($0.rawValue) }
                 }
                 if let windows = addableWindows {
                     if !windows.isEmpty {
                         let full = windows.filter { MenuBarPins.decode(pinned).contains($0.id) }.count >= MenuBarPins.maxPinned
-                        LabeledContent("Always show") {
+                        LabeledContent(tr("Always show")) {
                             VStack(alignment: .leading, spacing: 6) {
                                 ForEach(windows) { window in
                                     let ticked = isPinned(window.id)
@@ -143,37 +173,35 @@ struct GeneralSettings: View {
                         }
                     }
                 } else {
-                    LabeledContent("Always show") {
-                        Text(store.state.error == .notSignedIn ? "Sign in on the Login tab first." : "Available after the first update.")
+                    LabeledContent(tr("Always show")) {
+                        Text(store.state.error == .notSignedIn ? tr("Sign in on the Login tab first.") : tr("Available after the first update."))
                             .font(.callout)
                             .foregroundStyle(Ink.secondary)
                     }
                 }
-                Toggle("Show percentage", isOn: Binding(get: { !compact }, set: { compact = !$0 }))
-                Toggle("Show other limits when high", isOn: $extraRings)
-                ThresholdSlider(title: "At or above", symbol: "circle.dotted", tint: Ink.secondary, value: $extraThreshold, range: 50...100)
+                Toggle(tr("Show percentage"), isOn: Binding(get: { !compact }, set: { compact = !$0 }))
+                Toggle(tr("Show other limits when high"), isOn: $extraRings)
+                ThresholdSlider(title: tr("At or above"), symbol: "circle.dotted", tint: Ink.secondary, value: $extraThreshold, range: 50...100)
                     .disabled(!extraRings)
             } header: {
-                Text("Menu Bar")
+                Text(tr("Menu Bar"))
             } footer: {
-                Text("Always show up to two limits. Other limits get a ring when they reach this level, up to three rings in all.")
-                    .foregroundStyle(.secondary)
+                FormNote(tr("Always show up to two limits. Other limits get a ring when they reach this level, up to three rings in all."))
             }
 
             Section {
-                ThresholdSlider(title: "Warning", symbol: "exclamationmark.triangle.fill", tint: Palette.warningGlyph, value: $warning, range: 10...95)
-                ThresholdSlider(title: "Critical", symbol: "exclamationmark.octagon.fill", tint: Palette.criticalGlyph, value: $critical, range: 15...100)
+                ThresholdSlider(title: tr("Warning"), symbol: "exclamationmark.triangle.fill", tint: Palette.warningGlyph, value: $warning, range: 10...95)
+                ThresholdSlider(title: tr("Critical"), symbol: "exclamationmark.octagon.fill", tint: Palette.criticalGlyph, value: $critical, range: 15...100)
             } header: {
-                Text("Highlight Levels")
+                Text(tr("Highlight Levels"))
             } footer: {
-                Text("Meters and the menu bar icon change colour above these levels.")
-                    .foregroundStyle(.secondary)
+                FormNote(tr("Meters and the menu bar icon change colour above these levels."))
             }
 
-            Section("Updates") {
-                Picker("Check usage", selection: $refreshMinutes) {
+            Section(tr("Updates")) {
+                Picker(tr("Check usage"), selection: $refreshMinutes) {
                     ForEach([1, 2, 5, 10, 15, 30], id: \.self) { minutes in
-                        Text(minutes == 1 ? "Every minute" : "Every \(minutes) minutes").tag(minutes)
+                        Text(minutes == 1 ? tr("Every minute") : tr("Every %lld minutes", minutes)).tag(minutes)
                     }
                 }
             }
@@ -199,27 +227,43 @@ struct NotificationSettings: View {
     @AppStorage(SettingsKey.notifyLow) private var notifyLow = 80
     @AppStorage(SettingsKey.notifyHigh) private var notifyHigh = 95
     @AppStorage(SettingsKey.notifyReset) private var notifyReset = true
+    @AppStorage(SettingsKey.notifyOutage) private var notifyOutage = true
+    @AppStorage(SettingsKey.notifyUpdates) private var notifyUpdates = true
 
     var body: some View {
         Form {
+            // Limit alerts with the settings they control, so it's clear why those dim when off.
             Section {
-                Toggle("Notify when a limit gets close", isOn: $notificationsEnabled)
+                Toggle(isOn: $notificationsEnabled) {
+                    Text(tr("Notify when a limit gets close"))
+                    Text(tr("At the levels below, once per limit until it resets."))
+                }
+                Group {
+                    ThresholdSlider(title: tr("First alert"), symbol: "bell.fill", tint: Palette.warningGlyph, value: percent($notifyLow), range: 50...95)
+                    ThresholdSlider(title: tr("Second alert"), symbol: "bell.badge.fill", tint: Palette.criticalGlyph, value: percent($notifyHigh), range: 50...100)
+                    Toggle(tr("Notify when a limit resets"), isOn: $notifyReset)
+                }
+                .disabled(!notificationsEnabled)
+            } header: {
+                Text(tr("Limits"))
+            }
+            Section {
+                Toggle(isOn: $notifyOutage) {
+                    Text(tr("Notify when usage stops updating"))
+                    Text(tr("Right away when the login needs attention; after 30 minutes for other problems, such as being offline."))
+                }
+                Toggle(isOn: $notifyUpdates) {
+                    Text(tr("Notify when an update is available"))
+                    Text(tr("Once per new version."))
+                }
+            } header: {
+                Text(tr("App"))
             } footer: {
+                // Only in development builds run without the app bundle.
                 if !NotificationManager.isAvailable {
-                    Text("Available when running the bundled Claudometer.app.").foregroundStyle(.secondary)
+                    FormNote(tr("Available when running the bundled Claudometer.app."))
                 }
             }
-            Section {
-                ThresholdSlider(title: "First alert", symbol: "bell.fill", tint: Palette.warningGlyph, value: percent($notifyLow), range: 50...95)
-                ThresholdSlider(title: "Second alert", symbol: "bell.badge.fill", tint: Palette.criticalGlyph, value: percent($notifyHigh), range: 50...100)
-                Toggle("Notify when a limit resets", isOn: $notifyReset)
-            } header: {
-                Text("Alerts")
-            } footer: {
-                Text("Each alert fires at most once per limit until that limit resets.")
-                    .foregroundStyle(.secondary)
-            }
-            .disabled(!notificationsEnabled)
         }
         .formStyle(.grouped)
         .fixedSize(horizontal: false, vertical: true)
@@ -231,6 +275,18 @@ struct NotificationSettings: View {
             guard enabled else { return }
             Task {
                 if !(await NotificationManager.requestAuthorization()) { notificationsEnabled = false }
+            }
+        }
+        .onChange(of: notifyOutage) { _, enabled in
+            guard enabled else { return }
+            Task {
+                if !(await NotificationManager.requestAuthorization()) { notifyOutage = false }
+            }
+        }
+        .onChange(of: notifyUpdates) { _, enabled in
+            guard enabled else { return }
+            Task {
+                if !(await NotificationManager.requestAuthorization()) { notifyUpdates = false }
             }
         }
     }
@@ -248,59 +304,67 @@ struct LoginSettings: View {
 
     var body: some View {
         Form {
-            Section("Data Source") {
-                LabeledContent("Using") {
+            Section(tr("Data Source")) {
+                LabeledContent(tr("Using")) {
                     Text(sourceText).foregroundStyle(Ink.secondary)
                 }
             }
 
             Section {
                 if model.hasKey {
-                    LabeledContent("Session key") {
+                    LabeledContent(tr("Session key")) {
                         HStack(spacing: 8) {
-                            Text("Saved in Keychain").foregroundStyle(Ink.secondary)
-                            Button("Remove") { model.remove(store: store) }
+                            Text(tr("Saved in Keychain")).foregroundStyle(Ink.secondary)
+                            Button(tr("Remove")) { model.remove(store: store) }
                         }
                     }
                     if model.isPaused {
                         HStack(spacing: 8) {
                             Label {
-                                Text("Keychain access was denied, so the backup is paused.").foregroundStyle(Ink.secondary)
+                                Text(tr("Keychain access was denied, so the backup is paused.")).foregroundStyle(Ink.secondary)
                             } icon: {
                                 Image(systemName: "key.fill").foregroundStyle(Palette.warningGlyph)
                             }
                             Spacer(minLength: 8)
-                            Button("Try Again") { model.resume(store: store) }
-                                .help("Asks for Keychain access once more. Choose “Always Allow” to stop the prompts.")
+                            Button(tr("Try Again")) { model.resume(store: store) }
+                                .help(tr("Asks for Keychain access once more."))
                         }
                         .font(.callout)
                     }
                 }
-                SecureField(model.hasKey ? "Replace key" : "Session key", text: $model.draft, prompt: Text("sk-ant-sid…"))
+                SecureField(model.hasKey ? tr("Replace key") : tr("Session key"), text: $model.draft, prompt: Text(verbatim: "sk-ant-sid…"))
                 HStack(spacing: 8) {
                     if model.isTesting {
                         ProgressView().controlSize(.small)
-                        Text("Checking with claude.ai…").foregroundStyle(Ink.secondary)
+                        Text(tr("Checking with claude.ai…")).foregroundStyle(Ink.secondary)
                     } else if let result = model.result {
                         Label {
-                            Text(LocalizedStringKey(result.text)).foregroundStyle(Ink.secondary)
+                            Text(md(result.text)).foregroundStyle(Ink.secondary)
                         } icon: {
                             Image(systemName: result.ok ? "checkmark.circle.fill" : "exclamationmark.octagon.fill")
                                 .foregroundStyle(result.ok ? Palette.teal : Palette.criticalGlyph)
                         }
                     }
                     Spacer(minLength: 8)
-                    Button("Save & Test") { model.save(store: store) }
+                    Button(tr("Save & Test")) { model.save(store: store) }
                         .disabled(model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isTesting)
                         .keyboardShortcut(.defaultAction)
                 }
                 .font(.callout)
             } header: {
-                Text("claude.ai Backup")
+                Text(tr("claude.ai Backup"))
             } footer: {
-                Text("Used only when the Claude Code login has expired, so usage stays live while Claude Code is closed. In your browser, open claude.ai, then Developer Tools → Storage (Safari) or Application (Chrome) → Cookies, and copy the value of `sessionKey`. It's stored in your Keychain and sent only to claude.ai.")
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                // Steps rather than a paragraph: for someone without Claude Code this is the way in.
+                VStack(alignment: .leading, spacing: 6) {
+                    FormNote(tr("Used only when the Claude Code login has expired, so usage stays live while Claude Code is closed."))
+                    VStack(alignment: .leading, spacing: 3) {
+                        FormNote(tr("1. Open claude.ai in your browser and sign in."))
+                        FormNote(tr("2. Open Developer Tools (⌥⌘I), then Storage (Safari) or Application (Chrome) → Cookies."))
+                        FormNote(tr("3. Copy the value of `sessionKey` and paste it above."))
+                    }
+                    Link(tr("Open claude.ai"), destination: URL(string: "https://claude.ai")!)
+                    FormNote(tr("Stored in your Keychain and sent only to claude.ai."))
+                }
             }
         }
         .formStyle(.grouped)
@@ -310,9 +374,9 @@ struct LoginSettings: View {
     }
 
     private var sourceText: String {
-        guard let snapshot = store.state.snapshot else { return "Not connected" }
+        guard let snapshot = store.state.snapshot else { return tr("Not connected") }
         let title = snapshot.source?.title ?? UsageSource.claudeCode.title
-        return store.state.error == nil ? title : "\(title) (last known)"
+        return store.state.error == nil ? title : tr("%@ (last known)", title)
     }
 }
 
@@ -336,9 +400,9 @@ final class SessionKeyModel: ObservableObject {
                 draft = ""
                 hasKey = true
                 isPaused = false
-                let session = snapshot.session.map { " · Session \(Formatters.percent($0.utilization))" } ?? ""
-                let plan = Formatters.planName(snapshot.plan).map { " · \($0) plan" } ?? ""
-                result = (true, "Works\(plan)\(session)")
+                let session = snapshot.session.map { tr(" · Session %@", Formatters.percent($0.utilization)) } ?? ""
+                let plan = Formatters.planName(snapshot.plan).map { " · " + tr("%@ plan", $0) } ?? ""
+                result = (true, tr("Works") + plan + session)
             } catch {
                 result = (false, Self.message(for: error))
             }
@@ -348,8 +412,8 @@ final class SessionKeyModel: ObservableObject {
     /// Wording for a key that was just pasted, rather than the background-poll messages.
     static func message(for error: Error) -> String {
         switch error as? AppError {
-        case .sessionKeyInvalid?: return "claude.ai didn't accept this key. Copy it again from a signed-in browser."
-        case .webBlocked?: return "claude.ai's bot check blocked the request, so this backup can't work right now."
+        case .sessionKeyInvalid?: return tr("claude.ai didn’t accept this key. Copy it again from a signed-in browser.")
+        case .webBlocked?: return tr("claude.ai’s bot check blocked the request, so this backup can’t work right now.")
         case let appError?: return appError.message
         case nil: return error.localizedDescription
         }
@@ -382,23 +446,23 @@ struct AboutSettings: View {
             Image(nsImage: NSApp.applicationIconImage)
                 .resizable()
                 .frame(width: 96, height: 96)
-            Text("Claudometer").font(.title2.weight(.semibold))
-            Text("Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev")")
+            Text(verbatim: "Claudometer").font(.title2.weight(.semibold))
+            Text(tr("Version %@", Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"))
                 .foregroundStyle(.secondary)
-            Text("Unofficial. Not affiliated with Anthropic.")
+            Text(tr("Unofficial. Not affiliated with Anthropic."))
                 .font(.callout.weight(.medium))
                 .foregroundStyle(.secondary)
-            Text("Your Claude plan limits in the menu bar.\nReads your Claude Code login, or your claude.ai session key if you add one; nothing leaves your Mac except the usage requests to Anthropic.")
+            Text(tr("Your Claude plan limits in the menu bar.\nReads your Claude Code login, or your claude.ai session key if you add one; nothing leaves your Mac except the usage requests to Anthropic."))
                 .font(.callout)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 8) {
                 if let release = updates.available {
-                    Button("Download \(release.version)…") { updates.openDownload() }
+                    Button(tr("Download %@…", release.version)) { updates.openDownload() }
                         .keyboardShortcut(.defaultAction)
                 } else {
-                    Button("Check for Updates") { Task { await updates.check(manual: true) } }
+                    Button(tr("Check for Updates")) { Task { await updates.check(manual: true) } }
                         .disabled(updates.isChecking)
                 }
                 if updates.isChecking { ProgressView().controlSize(.small) }
@@ -424,7 +488,7 @@ struct ThresholdSlider: View {
         LabeledContent {
             HStack {
                 Slider(value: $value, in: range, step: 5)
-                Text("\(Int(value))%").monospacedDigit().frame(width: 40, alignment: .trailing)
+                Text(verbatim: "\(Int(value))%").monospacedDigit().frame(width: 40, alignment: .trailing)
             }
         } label: {
             Label { Text(title) } icon: { Image(systemName: symbol).foregroundStyle(tint) }
@@ -456,5 +520,20 @@ final class LoginItem: ObservableObject {
               !defaults.bool(forKey: SettingsKey.loginItemOffered) else { return }
         defaults.set(true, forKey: SettingsKey.loginItemOffered)
         try? SMAppService.mainApp.register()
+    }
+}
+
+/// Secondary note under a settings group, aligned with the group's leading edge.
+/// Inline Markdown (`code`) is rendered.
+struct FormNote: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Text(md(text))
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }

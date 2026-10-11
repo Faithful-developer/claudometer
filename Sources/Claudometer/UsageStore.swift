@@ -85,6 +85,14 @@ final class UsageStore {
         restartPolling()
     }
 
+    /// Try Again in the popover. Also lifts a paused session key backup: that pause hides
+    /// behind the Claude Code error, so this may be the only Try Again the user sees.
+    func retry() {
+        let keys = SessionKeyStore()
+        if keys.isPaused { keys.isPaused = false }
+        refresh()
+    }
+
     /// Settings → Save & Test. Checks the key against claude.ai, stores it only if it works,
     /// then fetches right away so the new source shows up.
     func saveSessionKey(_ key: String) async throws -> UsageSnapshot {
@@ -116,12 +124,15 @@ final class UsageStore {
             let snapshot = try await service.fetch()
             failures = 0
             apply(UsageState(snapshot: snapshot, error: nil))
-            notifications.process(snapshot, settings: AppSettings.current)
+            let settings = AppSettings.current
+            notifications.process(snapshot, settings: settings)
+            notifications.processOutage(error: nil, fetchedAt: snapshot.fetchedAt, settings: settings)
         } catch {
             failures += 1
             let appError = (error as? AppError) ?? .unknown(error.localizedDescription)
             let keep = appError.keepsStaleData ? state.snapshot?.projected(at: Date()) : nil
             apply(UsageState(snapshot: keep, error: appError))
+            notifications.processOutage(error: appError, fetchedAt: keep?.fetchedAt, settings: AppSettings.current)
         }
     }
 

@@ -20,9 +20,9 @@ enum LimitImage {
                 if let icon = Bundle.main.image(forResource: "AppIcon") {
                     Image(nsImage: icon).resizable().frame(width: 24, height: 24)
                 }
-                Text("Claudometer").font(.system(size: 17, weight: .bold)).foregroundStyle(Ink.primary)
+                Text(verbatim: "Claudometer").font(.system(size: 17, weight: .bold)).foregroundStyle(Ink.primary)
             }
-            SectionHeader(Formatters.planName(snapshot.plan).map { "Plan Usage Limits · \($0)" } ?? "Plan Usage Limits")
+            SectionHeader(Formatters.planName(snapshot.plan).map { tr("Plan Usage Limits · %@", $0) } ?? tr("Plan Usage Limits"))
                 .padding(.top, 12)
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(snapshot.windows) { window in
@@ -43,9 +43,9 @@ enum LimitImage {
     }
 
     private static func footer(snapshot: UsageSnapshot, stale: Bool, now: Date) -> String {
-        stale
-            ? "Last known · \(snapshot.fetchedAt.formatted(date: .abbreviated, time: .shortened))"
-            : now.formatted(date: .abbreviated, time: .shortened)
+        let style = Date.FormatStyle(date: .abbreviated, time: .shortened).locale(L10n.locale)
+        // Stale: the same "Showing data from 14:05" as the popover.
+        return stale ? Formatters.dataFromText(snapshot.fetchedAt, now: now) : now.formatted(style)
     }
 
     /// One limit: title on the left, "68% · resets Fri 21:53" on the right, meter below.
@@ -58,12 +58,12 @@ enum LimitImage {
         var body: some View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(window.group == .session ? "Current Session" : window.title)
+                    Text(window.compactTitle)
                         .foregroundStyle(Ink.primary)
                         .lineLimit(1)
                         .truncationMode(.tail)
                     Spacer(minLength: 8)
-                    Text("\(Formatters.percent(window.utilization)) · resets \(Formatters.shortReset(window.resetsAt, now: now))")
+                    Text(tr("%@ · resets %@", Formatters.percent(window.utilization), Formatters.shortReset(window.resetsAt, now: now)))
                         .monospacedDigit()
                         .foregroundStyle(Ink.secondary)
                         .fixedSize()

@@ -1,6 +1,9 @@
 import AppKit
 import ClaudometerCore
 import Foundation
+#if WIDGET_SUPPORT
+import WidgetKit
+#endif
 
 /// `UserDefaults` keys and defaults (TZ FR-22). Views use `@AppStorage` with these keys;
 /// non-view code reads the current values through `AppSettings.current`.
@@ -18,10 +21,20 @@ enum SettingsKey {
     static let notifyLow = "notifyLow"
     static let notifyHigh = "notifyHigh"
     static let notifyReset = "notifyReset"
+    static let notifyOutage = "notifyOutage"
+    /// "system", "en" or "ru".
+    static let language = "language"
+    static let notifyUpdates = "notifyUpdates"
+    /// Last release version announced in a notification, so each version alerts once.
+    static let notifiedUpdateVersion = "notifiedUpdateVersion"
+    /// Selected Settings tab, so other views can open Settings on a given tab.
+    static let settingsTab = "settingsTab"
     /// Set once Open at Login has been turned on by default, so a later "off" sticks.
     static let loginItemOffered = "loginItemOffered"
     /// `ThresholdTracker` as JSON.
     static let notificationCycles = "notificationCycles"
+    /// `OutageTracker` as JSON.
+    static let outageTracker = "outageTracker"
     /// Replaced by `notificationCycles`; read once to migrate, then removed.
     static let legacyFiredNotifications = "firedNotifications"
     static let legacyNearLimitWindows = "nearLimitWindows"
@@ -40,6 +53,8 @@ struct AppSettings {
     var notifyLow: Int
     var notifyHigh: Int
     var notifyReset: Bool
+    var notifyOutage: Bool
+    var notifyUpdates: Bool
 
     static let defaults: [String: Any] = [
         SettingsKey.refreshMinutes: 5,
@@ -55,6 +70,9 @@ struct AppSettings {
         SettingsKey.notifyLow: 80,
         SettingsKey.notifyHigh: 95,
         SettingsKey.notifyReset: true,
+        SettingsKey.notifyOutage: true,
+        SettingsKey.language: "system",
+        SettingsKey.notifyUpdates: true,
     ]
 
     static func register() {
@@ -75,7 +93,9 @@ struct AppSettings {
             notificationsEnabled: d.bool(forKey: SettingsKey.notificationsEnabled),
             notifyLow: d.integer(forKey: SettingsKey.notifyLow),
             notifyHigh: d.integer(forKey: SettingsKey.notifyHigh),
-            notifyReset: d.bool(forKey: SettingsKey.notifyReset)
+            notifyReset: d.bool(forKey: SettingsKey.notifyReset),
+            notifyOutage: d.bool(forKey: SettingsKey.notifyOutage),
+            notifyUpdates: d.bool(forKey: SettingsKey.notifyUpdates)
         )
     }
 
@@ -94,8 +114,19 @@ struct AppSettings {
         SnapshotStore.saveStyle(WidgetStyle(
             metric: settings.menuBarMetric,
             warning: settings.warningThreshold,
-            critical: settings.criticalThreshold
+            critical: settings.criticalThreshold,
+            language: L10n.language
         ))
+    }
+
+    /// Switches the UI language right away; the widget follows on its next reload.
+    static func setLanguage(_ preference: String) {
+        L10n.resolve(preference)
+        UserDefaults.standard.set(preference, forKey: SettingsKey.language)
+        saveWidgetStyle()
+        #if WIDGET_SUPPORT
+        WidgetCenter.shared.reloadAllTimelines()
+        #endif
     }
 
     /// The menu bar's rings for `snapshot` (FR-3, FR-27, FR-28).
@@ -116,9 +147,9 @@ enum AppAppearance: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .system: return "System"
-        case .light: return "Light"
-        case .dark: return "Dark"
+        case .system: return tr("System")
+        case .light: return tr("Light")
+        case .dark: return tr("Dark")
         }
     }
 

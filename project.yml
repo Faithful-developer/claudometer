@@ -4,6 +4,7 @@
 name: Claudometer
 options:
   bundleIdPrefix: dev.claudometer
+  developmentLanguage: en
   deploymentTarget:
     macOS: "14.0"
   createIntermediateGroups: true
@@ -36,6 +37,9 @@ targets:
       - Sources/Claudometer
       - path: Resources/AppIcon.icns
         buildPhase: resources
+      # en/ru strings; Core's text is looked up in the running bundle, so the widget has them too.
+      - path: Resources/Localization
+        buildPhase: resources
     dependencies:
       - target: ClaudometerCore
       - target: ClaudometerWidget
@@ -51,6 +55,7 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleIconFile: AppIcon
+        CFBundleLocalizations: [en, ru]
         LSUIElement: true
         LSApplicationCategoryType: public.app-category.developer-tools
         CFBundleURLTypes:
@@ -64,7 +69,10 @@ targets:
   ClaudometerWidget:
     type: app-extension
     platform: macOS
-    sources: [Widget]
+    sources:
+      - Widget
+      - path: Resources/Localization
+        buildPhase: resources
     dependencies:
       - target: ClaudometerCore
       - sdk: WidgetKit.framework
@@ -83,6 +91,7 @@ targets:
         CFBundleDisplayName: Claudometer
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleLocalizations: [en, ru]
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:

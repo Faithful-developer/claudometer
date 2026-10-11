@@ -30,6 +30,7 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/Claudometer" "$APP/Contents/MacOS/Claudometer"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/"
+cp -R Resources/Localization/*.lproj "$APP/Contents/Resources/"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -44,6 +45,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleShortVersionString</key><string>${VERSION}</string>
     <key>CFBundleVersion</key><string>${BUILD_NUMBER}</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
+    <key>CFBundleDevelopmentRegion</key><string>en</string>
+    <key>CFBundleLocalizations</key><array><string>en</string><string>ru</string></array>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>LSUIElement</key><true/>
     <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
@@ -75,13 +78,7 @@ fi
 
 if [[ "${1:-}" == "--dmg" ]]; then
     DMG="build/Claudometer-${VERSION}.dmg"
-    STAGING="$(mktemp -d)"
-    cp -R "$APP" "$STAGING/"
-    ln -s /Applications "$STAGING/Applications"
-    rm -f "$DMG"
-    hdiutil create -volname Claudometer -srcfolder "$STAGING" -ov -format UDZO "$DMG" >/dev/null
-    rm -rf "$STAGING"
-    echo "✓ Packaged $DMG"
+    scripts/make-dmg.sh "$APP" "$DMG" "Claudometer ${VERSION}"
     # Notarize (needs a Developer ID identity):
     #   xcrun notarytool submit "$DMG" --keychain-profile <profile> --wait && xcrun stapler staple "$DMG"
 fi

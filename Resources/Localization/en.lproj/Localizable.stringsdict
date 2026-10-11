@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Every %lld minutes</key>
+    <dict>
+        <key>NSStringLocalizedFormatKey</key><string>%#@minutes@</string>
+        <key>minutes</key>
+        <dict>
+            <key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string>
+            <key>NSStringFormatValueTypeKey</key><string>lld</string>
+            <key>one</key><string>Every minute</string>
+            <key>other</key><string>Every %lld minutes</string>
+        </dict>
+    </dict>
+    <key>%lld percent used</key>
+    <dict>
+        <key>NSStringLocalizedFormatKey</key><string>%#@percent@</string>
+        <key>percent</key>
+        <dict>
+            <key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string>
+            <key>NSStringFormatValueTypeKey</key><string>lld</string>
+            <key>one</key><string>%lld percent used</string>
+            <key>other</key><string>%lld percent used</string>
+        </dict>
+    </dict>
+    <key>Claude usage %lld percent</key>
+    <dict>
+        <key>NSStringLocalizedFormatKey</key><string>%#@percent@</string>
+        <key>percent</key>
+        <dict>
+            <key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string>
+            <key>NSStringFormatValueTypeKey</key><string>lld</string>
+            <key>one</key><string>Claude usage %lld percent</string>
+            <key>other</key><string>Claude usage %lld percent</string>
+        </dict>
+    </dict>
+    <key>%@ %lld percent</key>
+    <dict>
+        <key>NSStringLocalizedFormatKey</key><string>%1$@ %2$#@percent@</string>
+        <key>percent</key>
+        <dict>
+            <key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string>
+            <key>NSStringFormatValueTypeKey</key><string>lld</string>
+            <key>one</key><string>%2$lld percent</string>
+            <key>other</key><string>%2$lld percent</string>
+        </dict>
+    </dict>
+</dict>
+</plist>

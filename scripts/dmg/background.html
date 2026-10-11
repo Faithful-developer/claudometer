@@ -1,0 +1,184 @@
+<!doctype html>
+<!--
+  DMG window background, 660×400 pt: the "install meter". Rendered to
+  Resources/DMG/background.tiff by scripts/dmg/render-background.sh.
+
+  Geometry must match scripts/make-dmg.sh: icons 112 pt at (170, 200) and (490, 200), so
+  their edges are x 114–226 and 434–546, y 144–256. Finder centres the 13 pt names on
+  y ≈ 274 (measured in a real window), hence the plates at 261–287. Keep the bottom 28 pt
+  free: a viewer's path bar covers it.
+
+  Finder shows one background in both appearances but draws the names black in Light and
+  white in Dark, so the art is a mid-dark dusk and the plates a mid-tone coral that both
+  label colours read on. Colours come from Sources/ClaudometerCore/UI/Palette.swift.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; padding: 0; }
+  body {
+    width: 660px; height: 400px; overflow: hidden;
+    background: #2E2833;
+    font-family: -apple-system, "SF Pro Text", "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  svg { display: block; }
+  .wordmark { font: 700 15px -apple-system, "SF Pro Display", sans-serif; fill: #F7F6F3; letter-spacing: -0.2px; }
+  .tagline { font: 500 11px -apple-system, sans-serif; fill: #F7F6F3; fill-opacity: 0.62; }
+  .scale { font: 600 9.5px -apple-system, sans-serif; fill: #F7F6F3; fill-opacity: 0.55; letter-spacing: 0.4px; }
+  .scale-end { fill: #F29A72; fill-opacity: 1; }
+  .dial { font: 600 12.5px -apple-system, sans-serif; fill: #F7F6F3; }
+  .dial-ru { font: 400 10.5px -apple-system, sans-serif; fill: #F7F6F3; fill-opacity: 0.6; }
+  .hint-en { font: 500 11px -apple-system, sans-serif; fill: #F7F6F3; fill-opacity: 0.7; }
+  .hint-ru { font: 400 10.5px -apple-system, sans-serif; fill: #F7F6F3; fill-opacity: 0.5; }
+  .key { font-weight: 600; fill-opacity: 1; }
+  .key-ru { font-weight: 600; fill-opacity: 0.78; }
+</style>
+</head>
+<body>
+<svg width="660" height="400" viewBox="0 0 660 400" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Dusk: plum at the top into graphite -->
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="400" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4A3A58"/>
+      <stop offset="0.55" stop-color="#34293D"/>
+      <stop offset="1" stop-color="#232229"/>
+    </linearGradient>
+    <radialGradient id="glowApp" cx="170" cy="205" r="210" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E76F51" stop-opacity="0.42"/>
+      <stop offset="0.5" stop-color="#E76F51" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#E76F51" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowDest" cx="490" cy="205" r="170" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F29A72" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#F29A72" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Dotted grid, fading toward the edges -->
+    <pattern id="dots" width="16" height="16" patternUnits="userSpaceOnUse" x="2" y="4">
+      <circle cx="1" cy="1" r="0.9" fill="#F7F6F3" fill-opacity="0.09"/>
+    </pattern>
+    <radialGradient id="fade" cx="330" cy="200" r="340" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff" stop-opacity="1"/>
+      <stop offset="0.7" stop-color="#fff" stop-opacity="0.3"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <mask id="fadeMask"><rect width="660" height="400" fill="url(#fade)"/></mask>
+
+    <!-- Meter fill: coral light at 0 → deep coral at 100% -->
+    <linearGradient id="meter" x1="254" y1="0" x2="406" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F29A72"/>
+      <stop offset="0.6" stop-color="#E76F51"/>
+      <stop offset="1" stop-color="#D95E43"/>
+    </linearGradient>
+    <linearGradient id="needle" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#F7F6F3"/>
+      <stop offset="1" stop-color="#F29A72"/>
+    </linearGradient>
+    <!-- Glass pedestal: brighter at the top edge -->
+    <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.13"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.04"/>
+    </linearGradient>
+    <linearGradient id="plate" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#CC5E43"/>
+      <stop offset="1" stop-color="#BF553C"/>
+    </linearGradient>
+
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="lift" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000" flood-opacity="0.28"/>
+    </filter>
+    <filter id="plateShadow" x="-10%" y="-40%" width="120%" height="200%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="660" height="400" fill="url(#sky)"/>
+  <rect width="660" height="400" fill="url(#glowApp)"/>
+  <rect width="660" height="400" fill="url(#glowDest)"/>
+  <rect width="660" height="400" fill="url(#dots)" mask="url(#fadeMask)"/>
+
+  <!-- Header: ring mark + wordmark, tagline -->
+  <g transform="translate(28, 28)">
+    <circle cx="9" cy="9" r="7" fill="none" stroke="#F7F6F3" stroke-opacity="0.22" stroke-width="3"/>
+    <path d="M 9 2 A 7 7 0 1 1 2.94 12.5" fill="none" stroke="#F29A72" stroke-width="3" stroke-linecap="round"/>
+    <text x="25" y="14.5" class="wordmark">Claudometer</text>
+  </g>
+  <text x="632" y="42" text-anchor="end" class="tagline">Claude usage in your menu bar</text>
+  <line x1="28" y1="62" x2="632" y2="62" stroke="#F7F6F3" stroke-opacity="0.1"/>
+
+  <!-- Pedestals: a glass stand under each icon, holding its name plate -->
+  <g filter="url(#lift)">
+    <rect x="100" y="134" width="140" height="160" rx="28" fill="url(#glass)" stroke="#F7F6F3" stroke-opacity="0.16"/>
+    <rect x="420" y="134" width="140" height="160" rx="28" fill="url(#glass)" stroke="#F7F6F3" stroke-opacity="0.16"/>
+  </g>
+  <!-- Name plates on Finder's label line (centre y 274). Mid-tone coral: Finder's black
+       (Light) and white (Dark) names both read on it. -->
+  <g filter="url(#plateShadow)">
+    <rect x="104" y="261" width="132" height="26" rx="13" fill="url(#plate)"/>
+    <rect x="424" y="261" width="132" height="26" rx="13" fill="url(#plate)"/>
+  </g>
+  <g fill="none" stroke="#FFFFFF" stroke-opacity="0.22">
+    <rect x="104.5" y="261.5" width="131" height="25" rx="12.5"/>
+    <rect x="424.5" y="261.5" width="131" height="25" rx="12.5"/>
+  </g>
+
+  <!--
+    The install meter: a semicircular dial between the icons, centre (330, 206), radius 76, clear of both pedestals.
+    0 sits by the app, 100% by Applications, and the needle points at the folder: the
+    meter you fill by dragging, and the drag arrow in one.
+  -->
+  <g id="meterGroup">
+    <path d="M 254 206 A 76 76 0 0 1 406 206" fill="none" stroke="#F7F6F3" stroke-opacity="0.1" stroke-width="12" stroke-linecap="round"/>
+    <g id="ticks" stroke="#F7F6F3" stroke-linecap="round"></g>
+    <path d="M 254 206 A 76 76 0 0 1 406 206" fill="none" stroke="url(#meter)" stroke-width="12" stroke-linecap="round" filter="url(#glow)"/>
+    <text x="254" y="230" text-anchor="middle" class="scale">0</text>
+    <text x="330" y="105" text-anchor="middle" class="scale">50</text>
+    <text x="406" y="230" text-anchor="middle" class="scale scale-end">100%</text>
+
+    <!-- Needle, pointing at the folder -->
+    <g transform="translate(330, 206) rotate(-8)" filter="url(#glow)">
+      <path d="M -10 -4.5 L 58 -1.4 Q 64 0 58 1.4 L -10 4.5 Q -14 0 -10 -4.5 Z" fill="url(#needle)"/>
+    </g>
+    <circle cx="330" cy="206" r="8" fill="#2E2833" stroke="#F29A72" stroke-width="3"/>
+    <circle cx="330" cy="206" r="2.5" fill="#F7F6F3"/>
+
+    <text x="330" y="246" text-anchor="middle" class="dial">Drag to install</text>
+    <text x="330" y="262" text-anchor="middle" class="dial-ru">Перетащите для установки</text>
+  </g>
+
+  <!-- First launch hint, above the path bar strip -->
+  <line x1="28" y1="318" x2="632" y2="318" stroke="#F7F6F3" stroke-opacity="0.1"/>
+  <g transform="translate(330, 0)">
+    <text x="0" y="341" text-anchor="middle" class="hint-en">
+      First launch: <tspan class="key">System Settings › Privacy &amp; Security › Open Anyway</tspan>
+    </text>
+    <text x="0" y="359" text-anchor="middle" class="hint-ru">
+      Первый запуск: <tspan class="key-ru">Системные настройки › Конфиденциальность и безопасность › Все равно открыть</tspan>
+    </text>
+  </g>
+</svg>
+<script>
+  // Dial ticks just outside the arc: every 5 %, longer every 10 % and at 50 %. None at the
+  // ends, where the 0 and 100% labels sit and the pedestals are close.
+  const g = document.getElementById('ticks');
+  for (let i = 1; i < 20; i++) {
+    const a = Math.PI - (i / 20) * Math.PI, c = Math.cos(a), s = -Math.sin(a);
+    const major = i % 10 === 0, mid = i % 2 === 0;
+    const r1 = 76 + 10, r2 = 76 + (major ? 18 : mid ? 15 : 13);
+    const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    l.setAttribute('x1', 330 + r1 * c); l.setAttribute('y1', 206 + r1 * s);
+    l.setAttribute('x2', 330 + r2 * c); l.setAttribute('y2', 206 + r2 * s);
+    l.setAttribute('stroke-width', major ? 1.6 : 1.1);
+    l.setAttribute('stroke-opacity', major ? 0.5 : mid ? 0.3 : 0.16);
+    g.appendChild(l);
+  }
+</script>
+</body>
+</html>

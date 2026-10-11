@@ -142,10 +142,10 @@ public struct PercentText: View {
 
     public var body: some View {
         if let value {
-            Text("\(Int(min(max(value, 0), 100).rounded()))")
+            Text(verbatim: "\(Int(min(max(value, 0), 100).rounded()))")
                 .font(.system(size: size, weight: weight, design: .rounded))
                 .foregroundStyle(dimmed ? Ink.secondary : Ink.primary)
-            + Text(value > 100 ? "%+" : "%")
+            + Text(verbatim: value > 100 ? "%+" : "%")
                 .font(.system(size: size * 0.55, weight: weight, design: .rounded))
                 .foregroundStyle(Ink.secondary)
         } else {
@@ -186,15 +186,15 @@ public struct StatusLabel: View {
     private var content: (String, String, Color, Color)? {
         if stale {
             guard let symbol = Palette.symbol(for: level), let label = Formatters.levelLabel(level) else { return nil }
-            return (symbol, "Last known: \(label)", Palette.glyph(for: level), Palette.track)
+            return (symbol, tr("Last known: %@", label), Palette.glyph(for: level), Palette.track)
         }
         switch level {
-        case .critical: return ("exclamationmark.octagon.fill", "Near limit", Palette.criticalGlyph, Palette.criticalSoft)
-        case .warning: return ("exclamationmark.triangle.fill", "Getting close", Palette.warningGlyph, Palette.warningSoft)
+        case .critical: return ("exclamationmark.octagon.fill", tr("Near limit"), Palette.criticalGlyph, Palette.criticalSoft)
+        case .warning: return ("exclamationmark.triangle.fill", tr("Getting close"), Palette.warningGlyph, Palette.warningSoft)
         case .ok:
             switch pace {
-            case .ahead: return ("speedometer", "Ahead of pace", Palette.info, Palette.infoSoft)
-            case .under, .on: return ("checkmark.circle.fill", "On track", Palette.teal, Palette.tealSoft)
+            case .ahead: return ("speedometer", tr("Ahead of pace"), Palette.info, Palette.infoSoft)
+            case .under, .on: return ("checkmark.circle.fill", tr("On track"), Palette.teal, Palette.tealSoft)
             case nil: return nil
             }
         case .unknown: return nil
@@ -274,9 +274,9 @@ public struct BreakdownChart: View {
                     ForEach(rows) { row in
                         HStack(spacing: 6) {
                             Circle().fill(color(row)).frame(width: 7, height: 7)
-                            Text(row.title).foregroundStyle(Ink.secondary).lineLimit(1).truncationMode(.tail)
+                            Text(tr(row.title)).foregroundStyle(Ink.secondary).lineLimit(1).truncationMode(.tail)
                             Spacer(minLength: 8)
-                            Text("\(Int(row.percent.rounded()))%").monospacedDigit().fontWeight(.medium).foregroundStyle(valueInk)
+                            Text(verbatim: "\(Int(row.percent.rounded()))%").monospacedDigit().fontWeight(.medium).foregroundStyle(valueInk)
                         }
                         .font(.callout)
                         .accessibilityElement(children: .combine)
@@ -288,8 +288,8 @@ public struct BreakdownChart: View {
                     ForEach(Self.folded(rows)) { row in
                         HStack(spacing: 4) {
                             Circle().fill(color(row)).frame(width: 6, height: 6)
-                            Text(row.title).foregroundStyle(Ink.secondary).truncationMode(.tail)
-                            Text("\(Int(row.percent.rounded()))%").fontWeight(.semibold).foregroundStyle(valueInk)
+                            Text(tr(row.title)).foregroundStyle(Ink.secondary).truncationMode(.tail)
+                            Text(verbatim: "\(Int(row.percent.rounded()))%").fontWeight(.semibold).foregroundStyle(valueInk)
                                 .fixedSize()
                                 .layoutPriority(1)
                         }
@@ -305,7 +305,7 @@ public struct BreakdownChart: View {
     static func folded(_ rows: [BreakdownRow]) -> [BreakdownRow] {
         guard rows.count > 3 else { return rows }
         let rest = rows.dropFirst(2).reduce(0) { $0 + $1.percent }
-        return Array(rows.prefix(2)) + [BreakdownRow(key: "other", title: "Other", percent: rest)]
+        return Array(rows.prefix(2)) + [BreakdownRow(key: "other", title: tr("Other"), percent: rest)]
     }
 }
 

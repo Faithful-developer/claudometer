@@ -384,3 +384,130 @@ private func json(_ string: String) -> Data { Data(string.utf8) }
         #expect(UpdateChecker.newer(than: "0.1.0", in: pre) == nil)
     }
 }
+
+@Suite struct OutageTests {
+    let start = Date(timeIntervalSince1970: 1_800_000_000)
+
+    @Test func userActionErrorsAlertRightAway() {
+        var tracker = OutageTracker()
+        #expect(tracker.record(error: .tokenExpired, now: start) == .stopped(.tokenExpired))
+    }
+
+    @Test func passingErrorsWaitForGrace() {
+        var tracker = OutageTracker()
+        #expect(tracker.record(error: .offline, now: start) == nil)
+        #expect(tracker.record(error: .server(status: 503), now: start.addingTimeInterval(29 * 60)) == nil)
+        #expect(tracker.record(error: .offline, now: start.addingTimeInterval(30 * 60)) == .stopped(.offline))
+    }
+
+    @Test func alertsOncePerOutage() {
+        var tracker = OutageTracker()
+        _ = tracker.record(error: .tokenExpired, now: start)
+        #expect(tracker.record(error: .tokenExpired, now: start.addingTimeInterval(60)) == nil)
+        #expect(tracker.record(error: .notSignedIn, now: start.addingTimeInterval(120)) == nil)
+        #expect(tracker.record(error: nil, now: start.addingTimeInterval(180)) == .recovered)
+        // A new outage alerts again.
+        #expect(tracker.record(error: .tokenExpired, now: start.addingTimeInterval(240)) == .stopped(.tokenExpired))
+    }
+
+    @Test func recoversSilentlyWithoutAlert() {
+        var tracker = OutageTracker()
+        _ = tracker.record(error: .offline, now: start)
+        #expect(tracker.record(error: nil, now: start.addingTimeInterval(60)) == nil)
+        // The grace period starts over after a success.
+        #expect(tracker.record(error: .offline, now: start.addingTimeInterval(31 * 60)) == nil)
+    }
+
+    @Test func survivesRelaunch() throws {
+        var tracker = OutageTracker()
+        _ = tracker.record(error: .tokenExpired, now: start)
+        var restored = try JSONDecoder().decode(OutageTracker.self, from: JSONEncoder().encode(tracker))
+        #expect(restored == tracker)
+        #expect(restored.record(error: .tokenExpired, now: start.addingTimeInterval(60)) == nil)
+    }
+
+    @Test func recoveryButtons() {
+        #expect(AppError.tokenExpired.recoveries(hasSessionKey: false) == [.tryAgain, .addSessionKey])
+        #expect(AppError.tokenExpired.recoveries(hasSessionKey: true) == [.tryAgain])
+        #expect(AppError.notSignedIn.recoveries(hasSessionKey: false) == [.tryAgain, .addSessionKey])
+        #expect(AppError.sessionKeyInvalid.recoveries(hasSessionKey: true) == [.updateSessionKey])
+        #expect(AppError.offline.recoveries(hasSessionKey: false) == [.tryAgain])
+    }
+
+    @Test func dataFromText() {
+        let fetched = start
+        let sameDay = Formatters.dataFromText(fetched, now: fetched.addingTimeInterval(60))
+        let nextDay = Formatters.dataFromText(fetched, now: fetched.addingTimeInterval(2 * 86_400))
+        let time = fetched.formatted(date: .omitted, time: .shortened)
+        #expect(sameDay == "Showing data from \(time)")
+        #expect(nextDay.hasPrefix("Showing data from "))
+        #expect(nextDay != sameDay && nextDay.hasSuffix(time))
+    }
+}
+
+/// Runs in Russian against the repo's strings files, then goes back to English (the keys).
+@Suite struct LocalizationTests {
+    static let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    static let root = repo.appendingPathComponent("Resources/Localization")
+
+    private func inRussian(_ body: () throws -> Void) rethrows {
+        try L10n.$scoped.withValue(L10n.make("ru", root: Self.root), operation: body)
+    }
+
+    @Test func russianPlurals() {
+        inRussian {
+            #expect(tr("Every %lld minutes", 2) == "Каждые 2\u{a0}минуты")
+            #expect(tr("Every %lld minutes", 5) == "Каждые 5\u{a0}минут")
+            #expect(tr("Every %lld minutes", 21) == "Каждую 21\u{a0}минуту")
+            #expect(tr("%lld percent used", 1) == "использован 1 процент")
+            #expect(tr("%lld percent used", 42) == "использовано 42 процента")
+            #expect(tr("%lld percent used", 91) == "использован 91 процент")
+            #expect(tr("%@ %lld percent", "Неделя Fable", 80) == "Неделя Fable: 80 процентов")
+        }
+    }
+
+    @Test func russianFormatting() {
+        inRussian {
+            #expect(Formatters.duration(2 * 3600 + 14 * 60) == "2\u{a0}ч 14\u{a0}мин")
+            #expect(Formatters.duration(3 * 86400 + 4 * 3600) == "3\u{a0}дн. 4\u{a0}ч")
+            let now = Date(timeIntervalSince1970: 1_800_000_000)
+            #expect(Formatters.resetText(now.addingTimeInterval(2 * 3600), now: now) == "Сброс через 2\u{a0}ч")
+            #expect(Formatters.shortReset(now.addingTimeInterval(2 * 3600), now: now) == "через 2\u{a0}ч")
+            #expect(Formatters.shortReset(now.addingTimeInterval(3 * 86400), now: now).hasPrefix("через") == false)
+            let window = LimitWindow(id: "weekly_scoped:Fable", group: .weekly, title: "Weekly · Fable", utilization: 80, resetsAt: nil)
+            #expect(window.title == "Неделя · Fable")
+            #expect(window.shortTitle == "Fable")
+            #expect(window.settingsTitle == "Неделя (Fable)")
+            #expect(AppError.offline.message == "Нет подключения к интернету. Повтор будет выполнен автоматически.")
+        }
+    }
+
+    @Test func englishIsTheKey() {
+        #expect(Formatters.duration(2 * 3600 + 14 * 60) == "2h 14m")
+        #expect(Formatters.shortReset(Date(timeIntervalSince1970: 7200), now: Date(timeIntervalSince1970: 0)) == "in 2h")
+    }
+
+    /// Every `tr("…")` key in the sources has a Russian translation.
+    @Test func everyKeyIsTranslated() throws {
+        let strings = try #require(NSDictionary(contentsOf: Self.root.appendingPathComponent("ru.lproj/Localizable.strings")) as? [String: String])
+        let plurals = try #require(NSDictionary(contentsOf: Self.root.appendingPathComponent("ru.lproj/Localizable.stringsdict")) as? [String: Any])
+        let known = Set(strings.keys).union(plurals.keys)
+        // English-only keys: identical in Russian.
+        let untranslated: Set = ["100%+", "%lld%%"]
+        let pattern = try NSRegularExpression(pattern: #"\btr\("((?:[^"\\]|\\.)*)""#)
+        var missing: [String] = []
+        for folder in ["Sources", "Widget"] {
+            let files = FileManager.default.enumerator(at: Self.repo.appendingPathComponent(folder), includingPropertiesForKeys: nil)
+            while let url = files?.nextObject() as? URL {
+                guard url.pathExtension == "swift" else { continue }
+                let text = try String(contentsOf: url, encoding: .utf8)
+                for match in pattern.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+                    let key = String(text[Range(match.range(at: 1), in: text)!])
+                        .replacingOccurrences(of: #"\n"#, with: "\n").replacingOccurrences(of: #"\""#, with: "\"")
+                    if !known.contains(key), !untranslated.contains(key) { missing.append(key) }
+                }
+            }
+        }
+        #expect(missing.isEmpty, "Missing in ru.lproj: \(missing)")
+    }
+}

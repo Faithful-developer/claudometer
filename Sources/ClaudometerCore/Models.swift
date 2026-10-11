@@ -12,7 +12,8 @@ public struct LimitWindow: Codable, Hashable, Identifiable, Sendable {
     /// Stable identifier, e.g. `session`, `weekly_all`, `weekly_scoped:Opus`.
     public let id: String
     public let group: LimitGroup
-    public let title: String
+    /// English title as decoded and saved; see `title` for the one to show.
+    public let rawTitle: String
     /// Percent used, 0...100 (may exceed 100; clamp for display only).
     public let utilization: Double
     public let resetsAt: Date?
@@ -22,10 +23,32 @@ public struct LimitWindow: Codable, Hashable, Identifiable, Sendable {
     public init(id: String, group: LimitGroup, title: String, utilization: Double, resetsAt: Date?, severity: String? = nil) {
         self.id = id
         self.group = group
-        self.title = title
+        self.rawTitle = title
         self.utilization = utilization
         self.resetsAt = resetsAt
         self.severity = severity
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, group, rawTitle = "title", utilization, resetsAt, severity
+    }
+
+    /// Model name of a model-scoped limit, e.g. "Fable" for `weekly_scoped:Fable`.
+    var model: String? {
+        guard let colon = id.firstIndex(of: ":") else { return nil }
+        return String(id[id.index(after: colon)...])
+    }
+
+    /// Title in the UI language. Built from `id` for the limits we know, so saved data shows
+    /// in the current language too; other limits keep the server's name.
+    public var title: String {
+        switch id {
+        case "session": return tr("Session (5h)")
+        case "weekly_all": return tr("Weekly · all models")
+        default:
+            if id.hasPrefix("weekly_scoped:"), let model { return tr("Weekly · %@", model) }
+            return rawTitle
+        }
     }
 
     /// Length of the rolling window, if known (5 h session, 7 d weekly).
@@ -63,10 +86,20 @@ public struct LimitWindow: Codable, Hashable, Identifiable, Sendable {
         return next
     }
 
+    /// Title for tight rows (widget, copied image): "Session", "Weekly", "Weekly · Opus".
+    public var compactTitle: String {
+        switch id {
+        case "session": return tr("Session")
+        case "weekly_all": return tr("Weekly")
+        default: return title
+        }
+    }
+
     /// Title without the group prefix, for rows under a "Weekly limits" heading.
     public var shortTitle: String {
-        if id == "weekly_all" { return "All models" }
-        if let range = title.range(of: " · ") { return String(title[range.upperBound...]) }
+        if id == "weekly_all" { return tr("All models") }
+        if id.hasPrefix("weekly_scoped:"), let model { return model }
+        if let range = rawTitle.range(of: " · ") { return String(rawTitle[range.upperBound...]) }
         return title
     }
 
@@ -74,7 +107,7 @@ public struct LimitWindow: Codable, Hashable, Identifiable, Sendable {
     public var settingsTitle: String {
         switch group {
         case .session: return title
-        case .weekly: return "Weekly (\(id == "weekly_all" ? "all models" : shortTitle))"
+        case .weekly: return tr("Weekly (%@)", id == "weekly_all" ? tr("all models") : shortTitle)
         case .other: return title
         }
     }
@@ -84,7 +117,7 @@ public struct LimitWindow: Codable, Hashable, Identifiable, Sendable {
     /// Session is a digit so it never collides with a model's initial.
     public var badgeLetter: String {
         if group == .session { return "5" }
-        if id == "weekly_all" { return "W" }
+        if id == "weekly_all" { return tr("W") }
         return shortTitle.first.map { String($0).uppercased() } ?? "?"
     }
 }
@@ -112,8 +145,8 @@ public enum UsageSource: String, Codable, Sendable {
 
     public var title: String {
         switch self {
-        case .claudeCode: return "Claude Code login"
-        case .claudeWeb: return "claude.ai session key"
+        case .claudeCode: return tr("Claude Code login")
+        case .claudeWeb: return tr("claude.ai session key")
         }
     }
 }
@@ -181,7 +214,7 @@ public struct UsageSnapshot: Codable, Hashable, Sendable {
         guard windows.contains(where: { ($0.resetsAt ?? .distantFuture) <= now }) else { return self }
         let updated = windows.map { window -> LimitWindow in
             guard let resetsAt = window.resetsAt, resetsAt <= now else { return window }
-            return LimitWindow(id: window.id, group: window.group, title: window.title, utilization: 0,
+            return LimitWindow(id: window.id, group: window.group, title: window.rawTitle, utilization: 0,
                                resetsAt: window.nextReset(after: resetsAt, now: now), severity: nil)
         }
         return UsageSnapshot(windows: updated, breakdown: breakdown, plan: plan, fetchedAt: fetchedAt, source: source)
@@ -197,9 +230,9 @@ public enum MenuBarMetric: String, Codable, CaseIterable, Identifiable, Sendable
     public var id: String { rawValue }
     public var title: String {
         switch self {
-        case .session: return "Session (5h)"
-        case .weekly: return "Weekly"
-        case .highest: return "Highest"
+        case .session: return tr("Session (5h)")
+        case .weekly: return tr("Weekly")
+        case .highest: return tr("Highest")
         }
     }
 }
@@ -236,26 +269,26 @@ public enum AppError: Error, Codable, Hashable, Sendable {
     public var message: String {
         switch self {
         case .notSignedIn:
-            return "Not signed in. Run `claude` in Terminal and use /login."
+            return tr("Not signed in. Sign in to Claude Code (run `claude` in Terminal, then `/⁠login`), or add a claude.ai session key.")
         case .keychainDenied:
-            return "Keychain access denied. Click Retry and choose “Always Allow”."
+            return tr("Keychain access denied. Click Try Again and choose “Always Allow”.")
         case .tokenExpired:
-            return "Claude Code login expired. Open Claude Code, or add a claude.ai session key in Settings."
+            return tr("Claude Code login expired. Open Claude Code, or add a claude.ai session key in Settings.")
         case .sessionKeyInvalid:
-            return "claude.ai session key expired. Paste a new one in Settings."
+            return tr("claude.ai session key expired. Paste a new one in Settings.")
         case .webBlocked:
-            return "claude.ai blocked the request. Retrying later."
+            return tr("claude.ai blocked the request. Retrying later.")
         case .rateLimited(let retryAfter):
             if let retryAfter, retryAfter > 0 {
-                return "Rate limited, retrying in \(Formatters.duration(retryAfter))."
+                return tr("Rate limited, retrying in %@.", Formatters.duration(retryAfter))
             }
-            return "Rate limited, retrying soon."
+            return tr("Rate limited, retrying soon.")
         case .offline:
-            return "Offline. Retrying automatically."
+            return tr("Offline. Retrying automatically.")
         case .server(let status):
-            return "Claude service error (\(status)). Retrying…"
+            return tr("Claude service error (%lld). Retrying…", status)
         case .apiChanged:
-            return "Usage format not recognised. Check for an update."
+            return tr("Usage format not recognised. Check for an update.")
         case .unknown(let text):
             return text
         }
@@ -266,6 +299,58 @@ public enum AppError: Error, Codable, Hashable, Sendable {
         switch self {
         case .rateLimited, .offline, .server, .tokenExpired, .sessionKeyInvalid, .webBlocked, .unknown: return true
         case .notSignedIn, .keychainDenied, .apiChanged: return false
+        }
+    }
+
+    /// A few words for tight spaces (widget captions): "Login expired", "Offline".
+    public var shortReason: String {
+        switch self {
+        case .notSignedIn: return tr("Not signed in")
+        case .keychainDenied: return tr("Keychain access needed")
+        case .tokenExpired: return tr("Login expired")
+        case .sessionKeyInvalid: return tr("Session key expired")
+        case .webBlocked: return tr("Blocked by claude.ai")
+        case .rateLimited: return tr("Rate limited")
+        case .offline: return tr("Offline")
+        case .server: return tr("Service error")
+        case .apiChanged: return tr("Update needed")
+        case .unknown: return tr("Can’t update")
+        }
+    }
+
+    /// Errors that won't clear up by themselves; the user has to do something (TZ FR-25).
+    public var needsUserAction: Bool {
+        switch self {
+        case .notSignedIn, .keychainDenied, .tokenExpired, .sessionKeyInvalid, .apiChanged: return true
+        case .webBlocked, .rateLimited, .offline, .server, .unknown: return false
+        }
+    }
+
+    /// Buttons offered next to the message (TZ FR-8), most useful first.
+    public func recoveries(hasSessionKey: Bool) -> [ErrorRecovery] {
+        switch self {
+        case .tokenExpired, .notSignedIn:
+            return hasSessionKey ? [.tryAgain] : [.tryAgain, .addSessionKey]
+        case .sessionKeyInvalid:
+            return [.updateSessionKey]
+        default:
+            return [.tryAgain]
+        }
+    }
+}
+
+/// A way out of an error state, shown as a button.
+public enum ErrorRecovery: Hashable, Sendable {
+    case tryAgain
+    /// Opens Settings › Login to paste a claude.ai session key.
+    case addSessionKey
+    case updateSessionKey
+
+    public var title: String {
+        switch self {
+        case .tryAgain: return tr("Try Again")
+        case .addSessionKey: return tr("Add Session Key…")
+        case .updateSessionKey: return tr("Update Session Key…")
         }
     }
 }

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Every %lld minutes</key>
+    <dict>
+        <key>NSStringLocalizedFormatKey</key><string>%#@minutes@</string>
+        <key>minutes</key>
+        <dict>
+            <key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string>
+            <key>NSStringFormatValueTypeKey</key><string>lld</string>
+            <key>one</key><string>Каждую %lld минуту</string>
+            <key>few</key><string>Каждые %lld минуты</string>
+            <key>many</key><string>Каждые %lld минут</string>
+            <key>other</key><string>Каждые %lld минут</string>
+        </dict>
+    </dict>
+    <key>%lld percent used</key>
+    <dict>
+        <key>NSStringLocalizedFormatKey</key><string>%#@percent@</string>
+        <key>percent</key>
+        <dict>
+            <key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string>
+            <key>NSStringFormatValueTypeKey</key><string>lld</string>
+            <key>one</key><string>использован %lld процент</string>
+            <key>few</key><string>использовано %lld процента</string>
+            <key>many</key><string>использовано %lld процентов</string>
+            <key>other</key><string>использовано %lld процента</string>
+        </dict>
+    </dict>
+    <key>Claude usage %lld percent</key>
+    <dict>
+        <key>NSStringLocalizedFormatKey</key><string>%#@percent@</string>
+        <key>percent</key>
+        <dict>
+            <key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string>
+            <key>NSStringFormatValueTypeKey</key><string>lld</string>
+            <key>one</key><string>Использование Claude: %lld процент</string>
+            <key>few</key><string>Использование Claude: %lld процента</string>
+            <key>many</key><string>Использование Claude: %lld процентов</string>
+            <key>other</key><string>Использование Claude: %lld процента</string>
+        </dict>
+    </dict>
+    <key>%@ %lld percent</key>
+    <dict>
+        <key>NSStringLocalizedFormatKey</key><string>%1$@: %2$#@percent@</string>
+        <key>percent</key>
+        <dict>
+            <key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string>
+            <key>NSStringFormatValueTypeKey</key><string>lld</string>
+            <key>one</key><string>%2$lld процент</string>
+            <key>few</key><string>%2$lld процента</string>
+            <key>many</key><string>%2$lld процентов</string>
+            <key>other</key><string>%2$lld процента</string>
+        </dict>
+    </dict>
+</dict>
+</plist>

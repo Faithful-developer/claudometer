@@ -11,7 +11,7 @@ public struct SessionKeyStore: Sendable {
     public static let service = "dev.claudometer.claude-ai-session"
     static let account = "sessionKey.v2"
     /// Item saved by 0.1.3 and earlier through the Security framework; its access list is tied
-    /// to one build. Removed on the next Save or Remove.
+    /// to one build. `migrateLegacyKey()` moves it over.
     static let legacyAccount = "sessionKey"
 
     public init() {}
@@ -51,17 +51,49 @@ public struct SessionKeyStore: Sendable {
         }
     }
 
-    /// Checks the item's attributes only, which never shows a Keychain prompt.
-    public var hasKey: Bool {
+    /// Checks the items' attributes only, which never shows a Keychain prompt. Counts a key
+    /// still waiting to be migrated.
+    public var hasKey: Bool { hasItem(Self.account) || hasItem(Self.legacyAccount) }
+
+    private func hasItem(_ account: String) -> Bool {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: Self.service,
-            kSecAttrAccount as String: Self.account,
+            kSecAttrAccount as String: account,
             kSecReturnAttributes as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
         var item: CFTypeRef?
         return SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess
+    }
+
+    /// Moves a key saved by 0.1.3 or earlier into the current item. Reading the old item shows
+    /// the Keychain prompt once; a denial pauses the backup like any other denied read. Does
+    /// nothing (and never prompts) once there's no old item left.
+    public func migrateLegacyKey() {
+        guard !isPaused, hasItem(Self.legacyAccount), !hasItem(Self.account) else { return }
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: Self.service,
+            kSecAttrAccount as String: Self.legacyAccount,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var item: CFTypeRef?
+        switch SecItemCopyMatching(query as CFDictionary, &item) {
+        case errSecSuccess:
+            if let data = item as? Data, let key = String(data: data, encoding: .utf8), !key.isEmpty {
+                // A failed save keeps the old item; pausing stops re-reading it (and prompting)
+                // on every poll until Try Again.
+                do { try save(key) } catch { isPaused = true }
+            } else {
+                deleteLegacyItem()
+            }
+        case errSecItemNotFound:
+            break
+        default:
+            isPaused = true
+        }
     }
 
     /// Set after a denied Keychain prompt; kept across launches.
@@ -73,7 +105,6 @@ public struct SessionKeyStore: Sendable {
     static let pausedKey = "sessionKeyAccessPaused"
 
     public func save(_ key: String) throws {
-        deleteLegacyItem()
         // Hex via stdin: no quoting to get wrong, and the key never shows up in `ps`.
         let hex = Data(key.utf8).map { String(format: "%02x", $0) }.joined()
         let command = "add-generic-password -U -s \(Self.service) -a \(Self.account) "
@@ -81,6 +112,8 @@ public struct SessionKeyStore: Sendable {
         guard SecurityTool.run(["-i"], input: command)?.status == 0, read() == .key(key) else {
             throw AppError.keychainDenied
         }
+        // Only once the new item is confirmed, so a failed save can't lose a migrated key.
+        deleteLegacyItem()
         isPaused = false
     }
 

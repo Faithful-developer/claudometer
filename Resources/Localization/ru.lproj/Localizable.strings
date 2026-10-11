@@ -1,0 +1,200 @@
+/* Claudometer — Russian. Keys are the English source text (see Sources/ClaudometerCore/L10n.swift). */
+
+
+/* App */
+"Claude Usage" = "Лимиты Claude";
+"Your Claude plan limits and when they reset." = "Лимиты вашего плана Claude и время их сброса.";
+"Refresh Claude Usage" = "Обновить лимиты Claude";
+"Fetches your latest Claude plan usage." = "Загружает актуальные данные об использовании плана Claude.";
+
+/* Popover */
+"%@ plan" = "План %@";
+"Loading usage…" = "Загрузка данных…";
+"Current Session" = "Текущая сессия";
+"Weekly Limits" = "Недельные лимиты";
+"Limits" = "Лимиты";
+"Usage by Surface This Week" = "Использование по сервисам за неделю";
+"Chats" = "Чаты";
+"Other" = "Другое";
+"Time elapsed in the window" = "Прошедшая часть периода";
+"Updating…" = "Обновление…";
+"Update Available: %@…" = "Доступно обновление: %@…";
+"Refresh Now" = "Обновить сейчас";
+"Settings…" = "Настройки…";
+"Quit Claudometer" = "Завершить Claudometer";
+"Copied as image" = "Скопировано как изображение";
+"Click to copy as an image" = "Нажмите, чтобы скопировать как изображение";
+"Copy as image" = "Скопировать как изображение";
+"Plan Usage Limits" = "Лимиты плана";
+"Plan Usage Limits · %@" = "Лимиты плана · %@";
+"%@ · resets %@" = "%@ · сброс %@";
+
+/* Status */
+"Near limit" = "На пределе";
+"Getting close" = "Близко к лимиту";
+"Ahead of pace" = "Быстрее нормы";
+"On track" = "В пределах нормы";
+"Last known: %@" = "Ранее: %@";
+"near limit" = "на пределе";
+"getting close" = "близко к лимиту";
+"last known %@" = "по последним данным %@";
+"out of date" = "данные устарели";
+"Showing data from %@" = "Данные на %@";
+"Out of date · %@" = "Устарело · %@";
+"Updated just now" = "Обновлено только что";
+"Updated %lld min ago" = "Обновлено %lld мин назад";
+"Updated %@" = "Обновлено: %@";
+
+/* Limits and times */
+"Session (5h)" = "Сессия (5 ч)";
+"Session" = "Сессия";
+"Weekly" = "Неделя";
+"Weekly · all models" = "Неделя · все модели";
+"Weekly · %@" = "Неделя · %@";
+"Weekly (%@)" = "Неделя (%@)";
+"All models" = "Все модели";
+"all models" = "все модели";
+"W" = "Н";
+"Highest" = "Наибольший лимит";
+"Not started" = "Отсчет не начат";
+"Resetting…" = "Сброс…";
+"Resets in %@" = "Сброс через %@";
+"Resets %@" = "Сброс %@";
+"in %@" = "через %@";
+"<1m" = "<1 мин";
+"%lldd %lldh" = "%lld дн. %lld ч";
+"%lldd" = "%lld дн.";
+"%lldh %lldm" = "%lld ч %lld мин";
+"%lldh" = "%lld ч";
+"%lldm" = "%lld мин";
+"Usage" = "Использование";
+"No data" = "Нет данных";
+"Refresh" = "Обновить";
+"Open Claudometer to start" = "Откройте Claudometer, чтобы начать";
+
+/* Data sources */
+"Claude Code login" = "Вход через Claude Code";
+"claude.ai session key" = "Ключ сессии claude.ai";
+
+/* Errors */
+"Keychain access denied. Click Try Again and choose “Always Allow”." = "Доступ к связке ключей запрещен. Нажмите «Повторить» и выберите «Всегда разрешать».";
+"Claude Code login expired. Open Claude Code, or add a claude.ai session key in Settings." = "Сессия Claude Code истекла. Откройте Claude Code или добавьте ключ сессии claude.ai в настройках.";
+"claude.ai session key expired. Paste a new one in Settings." = "Срок действия ключа сессии claude.ai истек. Вставьте новый ключ в настройках.";
+"claude.ai blocked the request. Retrying later." = "claude.ai заблокировал запрос. Повтор позже.";
+"Rate limited, retrying in %@." = "Слишком много запросов, повтор через %@.";
+"Rate limited, retrying soon." = "Слишком много запросов, повтор скоро.";
+"Offline. Retrying automatically." = "Нет подключения к интернету. Повтор будет выполнен автоматически.";
+"Claude service error (%lld). Retrying…" = "Ошибка сервиса Claude (%lld). Повтор…";
+"Usage format not recognised. Check for an update." = "Формат данных не распознан. Проверьте обновления.";
+"Try Again" = "Повторить";
+"Add Session Key…" = "Добавить ключ…";
+"Update Session Key…" = "Обновить ключ…";
+
+/* Notifications */
+"Claudometer can’t update usage" = "Claudometer не может обновить данные";
+"Claudometer %@ is available" = "Доступен Claudometer %@";
+"Click to download it from GitHub." = "Нажмите, чтобы скачать с GitHub.";
+"%@: %@ used" = "%@: использовано %@";
+"Passed %lld%%. %@." = "Порог %lld%% пройден. %@.";
+"%@ has reset" = "Лимит «%@» сброшен";
+"You’re back to %@ used." = "Теперь использовано %@.";
+
+/* Menu bar (VoiceOver) */
+"Update available" = "Доступно обновление";
+"Claude usage unavailable" = "Данные об использовании Claude недоступны";
+
+/* Settings: tabs */
+"General" = "Основные";
+"Notifications" = "Уведомления";
+"Login" = "Вход";
+"About" = "О программе";
+
+/* Settings: General */
+"Appearance" = "Оформление";
+"System" = "Авто";
+"Light" = "Светлое";
+"Dark" = "Темное";
+"Language" = "Язык";
+"Same as macOS" = "Как в macOS";
+"Open at Login" = "Открывать при входе в систему";
+"Menu Bar" = "Строка меню";
+"Show" = "Показывать";
+"Always show" = "Показывать всегда";
+"Sign in on the Login tab first." = "Сначала войдите на вкладке «Вход».";
+"Available after the first update." = "Появится после первого обновления данных.";
+"Show percentage" = "Показывать проценты";
+"Show other limits when high" = "Показывать другие лимиты при высоком расходе";
+"At or above" = "Кольцо от";
+"Always show up to two limits. Other limits get a ring when they reach this level, up to three rings in all." = "Не более двух лимитов показываются всегда. Остальные получают кольцо при достижении этого уровня; всего не более трех колец.";
+"Highlight Levels" = "Цветовые пороги";
+"Warning" = "Внимание";
+"Critical" = "Критично";
+"Meters and the menu bar icon change colour above these levels." = "Выше этих уровней шкалы и значок в строке меню меняют цвет.";
+"Updates" = "Обновление данных";
+"Check usage" = "Проверять";
+"Every minute" = "Каждую минуту";
+
+/* Settings: Notifications */
+"Notify when a limit gets close" = "Уведомлять о приближении к лимиту";
+"Notify when usage stops updating" = "Уведомлять, если данные перестали обновляться";
+"Right away when the login needs attention; after 30 minutes for other problems, such as being offline." = "Сразу, если нужно войти заново; через 30 минут — при других проблемах, например без интернета.";
+"Notify when an update is available" = "Уведомлять о новых версиях";
+"Once per new version." = "Один раз для каждой новой версии.";
+"Available when running the bundled Claudometer.app." = "Доступно в собранном приложении Claudometer.app.";
+"First alert" = "Первое уведомление";
+"Second alert" = "Второе уведомление";
+"Notify when a limit resets" = "Уведомлять о сбросе лимита";
+
+/* Settings: Login */
+"Data Source" = "Источник данных";
+"Using" = "Используется";
+"Not connected" = "Не подключено";
+"%@ (last known)" = "%@ (ранее)";
+"Session key" = "Ключ сессии";
+"Replace key" = "Заменить ключ";
+"Saved in Keychain" = "Сохранен в связке ключей";
+"Remove" = "Удалить";
+"Keychain access was denied, so the backup is paused." = "Доступ к связке ключей запрещен, поэтому запасной источник приостановлен.";
+"Asks for Keychain access once more." = "Повторно запрашивает доступ к связке ключей.";
+"Checking with claude.ai…" = "Проверка на claude.ai…";
+"Save & Test" = "Сохранить и проверить";
+"claude.ai Backup" = "Запасной источник: claude.ai";
+"Works" = "Работает";
+" · Session %@" = " · Сессия %@";
+"claude.ai didn’t accept this key. Copy it again from a signed-in browser." = "claude.ai не принял этот ключ. Скопируйте его заново в браузере, где выполнен вход.";
+"claude.ai’s bot check blocked the request, so this backup can’t work right now." = "Защита claude.ai от ботов заблокировала запрос, поэтому запасной источник сейчас недоступен.";
+
+/* Settings: About */
+"Version %@" = "Версия %@";
+"Unofficial. Not affiliated with Anthropic." = "Неофициальное приложение. Не связано с Anthropic.";
+"Your Claude plan limits in the menu bar.\nReads your Claude Code login, or your claude.ai session key if you add one; nothing leaves your Mac except the usage requests to Anthropic." = "Лимиты вашего плана Claude в строке меню.\nИспользует вход Claude Code или ключ сессии claude.ai, если вы его добавите; кроме запросов данных об использовании к Anthropic, ничего не покидает ваш Mac.";
+"Download %@…" = "Скачать %@…";
+"Check for Updates" = "Проверить обновления";
+"Update checks need the bundled app." = "Проверка обновлений работает только в собранном приложении.";
+"Version %@ is available." = "Доступна версия %@.";
+"You’re up to date." = "У вас последняя версия.";
+"Couldn’t check for updates." = "Не удалось проверить обновления.";
+
+/* Next steps */
+"Not signed in. Sign in to Claude Code (run `claude` in Terminal, then `/⁠login`), or add a claude.ai session key." = "Вход не выполнен. Войдите в Claude Code (`claude` в Терминале, затем `/⁠login`) или добавьте ключ сессии claude.ai.";
+"Not signed in" = "Вход не выполнен";
+"Keychain access needed" = "Нужен доступ к связке ключей";
+"Login expired" = "Сессия истекла";
+"Session key expired" = "Ключ сессии истек";
+"Blocked by claude.ai" = "Заблокировано claude.ai";
+"Rate limited" = "Слишком много запросов";
+"Offline" = "Нет сети";
+"Service error" = "Ошибка сервиса";
+"Update needed" = "Нужно обновление";
+"Can’t update" = "Не удается обновить";
+"Click to fix" = "Откройте приложение";
+"Click to open Claudometer" = "Нажмите, чтобы открыть Claudometer";
+"%@ · %@" = "%@ · %@";
+"At the levels below, once per limit until it resets." = "На уровнях ниже, по одному разу для каждого лимита до его сброса.";
+"App" = "Приложение";
+"Used only when the Claude Code login has expired, so usage stays live while Claude Code is closed." = "Используется, только когда истекла сессия Claude Code, — так данные остаются актуальными, даже если Claude Code закрыт.";
+"1. Open claude.ai in your browser and sign in." = "1. Откройте claude.ai в браузере и войдите в аккаунт.";
+"2. Open Developer Tools (⌥⌘I), then Storage (Safari) or Application (Chrome) → Cookies." = "2. Откройте инструменты разработчика (⌥⌘I), затем «Хранилище» (Safari) или Application (Chrome) → Cookies.";
+"3. Copy the value of `sessionKey` and paste it above." = "3. Скопируйте значение `sessionKey` и вставьте его выше.";
+"Open claude.ai" = "Открыть claude.ai";
+"Stored in your Keychain and sent only to claude.ai." = "Хранится в связке ключей и отправляется только на claude.ai.";

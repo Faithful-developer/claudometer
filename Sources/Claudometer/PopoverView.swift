@@ -16,6 +16,7 @@ struct PopoverView: View {
     @Environment(\.isPreviewRender) private var isPreviewRender
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.openSettings) private var openSettings
+    @AppStorage(SettingsKey.language) private var language = "system"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -28,6 +29,8 @@ struct PopoverView: View {
             actions
         }
         .padding(.vertical, 6)
+        // Rebuilt in a new language; `tr` reads it when the views are created.
+        .id(language)
         .frame(width: 300)
         .background { if !isPreviewRender { MenuBackground() } }
         .fitsMenuWindowHeight()
@@ -37,10 +40,10 @@ struct PopoverView: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text("Claudometer").font(.system(size: 13, weight: .bold)).foregroundStyle(Ink.primary)
+            Text(verbatim: "Claudometer").font(.system(size: 13, weight: .bold)).foregroundStyle(Ink.primary)
             Spacer()
             if let plan = Formatters.planName(store.state.snapshot?.plan) {
-                Text("\(plan) plan").font(.system(size: 12)).foregroundStyle(Ink.secondary)
+                Text(tr("%@ plan", plan)).font(.system(size: 12)).foregroundStyle(Ink.secondary)
             }
         }
         .padding(.horizontal, 14)
@@ -57,7 +60,14 @@ struct PopoverView: View {
 
         VStack(alignment: .leading, spacing: 0) {
             if let error = store.state.error {
-                ErrorNotice(error: error, stale: stale).padding(.horizontal, 14).padding(.vertical, 6)
+                ErrorNotice(
+                    error: error,
+                    staleSince: stale ? snapshot?.fetchedAt : nil,
+                    recoveries: error.recoveries(hasSessionKey: SessionKeyStore().hasKey),
+                    now: now,
+                    perform: recover
+                )
+                .padding(.horizontal, 14).padding(.vertical, 6)
             }
 
             if let hero {
@@ -70,7 +80,7 @@ struct PopoverView: View {
             } else if store.state.error == nil {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
-                    Text("Loading usage…").foregroundStyle(Ink.secondary)
+                    Text(tr("Loading usage…")).foregroundStyle(Ink.secondary)
                 }
                 .font(.system(size: 13))
                 .padding(14)
@@ -79,7 +89,7 @@ struct PopoverView: View {
             if !others.isEmpty {
                 MenuDivider()
                 VStack(alignment: .leading, spacing: 10) {
-                    SectionHeader(others.allSatisfy { $0.group == .weekly } ? "Weekly Limits" : "Limits")
+                    SectionHeader(others.allSatisfy { $0.group == .weekly } ? tr("Weekly Limits") : tr("Limits"))
                     ForEach(others) { window in
                         CopyableLimit(bleedY: 4) { scheme in
                             LimitImage.copy(snapshot: snapshot, stale: stale, now: now, colorScheme: scheme)
@@ -97,7 +107,7 @@ struct PopoverView: View {
             if let breakdown = snapshot?.breakdown, breakdown.contains(where: { $0.percent > 0 }) {
                 MenuDivider()
                 VStack(alignment: .leading, spacing: 8) {
-                    SectionHeader("Usage by Surface This Week")
+                    SectionHeader(tr("Usage by Surface This Week"))
                     // Stale: series fills go grey; the text keeps its full-contrast ink.
                     BreakdownChart(rows: breakdown, dimmed: stale)
                 }
@@ -106,12 +116,19 @@ struct PopoverView: View {
         }
     }
 
+    private func recover(_ recovery: ErrorRecovery) {
+        switch recovery {
+        case .tryAgain: store.retry()
+        case .addSessionKey, .updateSessionKey: SettingsWindow.open(openSettings, tab: .login)
+        }
+    }
+
     private var actions: some View {
         VStack(spacing: 0) {
             TimelineView(.periodic(from: .now, by: 30)) { context in
                 Group {
                     if store.isLoading {
-                        Text("Updating…")
+                        Text(tr("Updating…"))
                     } else if let fetched = store.state.snapshot?.fetchedAt {
                         Text(Formatters.updatedText(fetched, now: context.date))
                     }
@@ -123,18 +140,18 @@ struct PopoverView: View {
                 .padding(.bottom, 4)
             }
             if let release = updates.available {
-                MenuRow(title: "Update Available: \(release.version)…", shortcut: nil) { updates.openDownload() }
+                MenuRow(title: tr("Update Available: %@…", release.version), shortcut: nil) { updates.openDownload() }
             }
-            MenuRow(title: "Refresh Now", shortcut: "⌘R") { store.refresh() }
+            MenuRow(title: tr("Refresh Now"), shortcut: "⌘R") { store.refresh() }
                 .keyboardShortcut("r")
                 .disabled(store.isLoading)
             if isPreviewRender {
-                MenuRowLabel(title: "Settings…", shortcut: "⌘,").padding(.horizontal, 5)
+                MenuRowLabel(title: tr("Settings…"), shortcut: "⌘,").padding(.horizontal, 5)
             } else {
-                MenuRow(title: "Settings…", shortcut: "⌘,") { SettingsWindow.open(openSettings) }
+                MenuRow(title: tr("Settings…"), shortcut: "⌘,") { SettingsWindow.open(openSettings) }
                     .keyboardShortcut(",")
             }
-            MenuRow(title: "Quit Claudometer", shortcut: "⌘Q") { NSApp.terminate(nil) }
+            MenuRow(title: tr("Quit Claudometer"), shortcut: "⌘Q") { NSApp.terminate(nil) }
                 .keyboardShortcut("q")
         }
     }
@@ -164,7 +181,7 @@ struct HeroRow: View {
             .frame(width: 64, height: 64)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(window.group == .session ? "Current Session" : window.title)
+                Text(window.group == .session ? tr("Current Session") : window.title)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Ink.primary)
                     .lineLimit(1)
@@ -249,7 +266,7 @@ struct CopyableLimit<Content: View>: View {
                         if feedback.copied {
                             HStack(spacing: 4) {
                                 Image(systemName: "checkmark")
-                                Text("Copied as image")
+                                Text(tr("Copied as image"))
                             }
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(Ink.secondary)
@@ -260,8 +277,8 @@ struct CopyableLimit<Content: View>: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(CopyableLimitStyle())
-            .help("Click to copy as an image")
-            .accessibilityAction(named: "Copy as image", run)
+            .help(tr("Click to copy as an image"))
+            .accessibilityAction(named: Text(tr("Copy as image")), run)
             .padding(.horizontal, -bleedX).padding(.vertical, -bleedY)
         }
     }
@@ -269,7 +286,7 @@ struct CopyableLimit<Content: View>: View {
     private func run() {
         guard copy(colorScheme) else { NSSound.beep(); return }
         feedback.flash()
-        AccessibilityNotification.Announcement("Copied as image").post()
+        AccessibilityNotification.Announcement(tr("Copied as image")).post()
     }
 }
 
@@ -319,7 +336,7 @@ struct PaceLegend: View {
     var body: some View {
         HStack(spacing: 6) {
             Capsule().fill(Ink.secondary).frame(width: 2, height: 10)
-            Text("Time elapsed in the window")
+            Text(tr("Time elapsed in the window"))
         }
         .font(.system(size: 10))
         .foregroundStyle(Ink.tertiary(contrast))
@@ -395,9 +412,14 @@ final class HoverState: ObservableObject {
 
 // MARK: - Errors
 
+/// What went wrong, how old the data on screen is, and what to do about it (TZ FR-8, FR-25).
 struct ErrorNotice: View {
     let error: AppError
-    let stale: Bool
+    /// When the data still on screen was fetched; nil if there's none.
+    let staleSince: Date?
+    let recoveries: [ErrorRecovery]
+    let now: Date
+    let perform: (ErrorRecovery) -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -405,12 +427,22 @@ struct ErrorNotice: View {
                 .font(.system(size: 14))
                 .foregroundStyle(Palette.warningGlyph)
             VStack(alignment: .leading, spacing: 2) {
-                Text(LocalizedStringKey(error.message))
+                Text(md(error.message))
                     .font(.system(size: 12))
                     .foregroundStyle(Ink.primary)
                     .fixedSize(horizontal: false, vertical: true)
-                if stale {
-                    Text("Showing last known data.").font(.system(size: 11)).foregroundStyle(Ink.secondary)
+                if let staleSince {
+                    Text(Formatters.dataFromText(staleSince, now: now) + ".")
+                        .font(.system(size: 11)).foregroundStyle(Ink.secondary)
+                }
+                if !recoveries.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(recoveries, id: \.self) { recovery in
+                            Button(recovery.title) { perform(recovery) }
+                                .buttonStyle(NoticeButtonStyle())
+                        }
+                    }
+                    .padding(.top, 6)
                 }
             }
         }
@@ -425,6 +457,32 @@ struct ErrorNotice: View {
         case .notSignedIn, .tokenExpired: return "person.crop.circle.badge.exclamationmark"
         case .keychainDenied: return "key.fill"
         default: return "exclamationmark.triangle.fill"
+        }
+    }
+}
+
+/// Small bordered button on the error notice. Drawn in SwiftUI so it matches the menu rows
+/// and shows up in preview renders.
+struct NoticeButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        NoticeButtonBody(configuration: configuration)
+    }
+
+    private struct NoticeButtonBody: View {
+        let configuration: ButtonStyleConfiguration
+        @StateObject private var hover = HoverState()
+
+        var body: some View {
+            let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
+            configuration.label
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Ink.primary)
+                .padding(.horizontal, 10)
+                .frame(height: 22)
+                .background(shape.fill(configuration.isPressed ? Palette.coral.opacity(0.25) : hover.isOn ? Palette.coralSoft : Palette.surface))
+                .overlay(shape.strokeBorder(Palette.border))
+                .contentShape(shape)
+                .onHover { hover.isOn = $0 }
         }
     }
 }

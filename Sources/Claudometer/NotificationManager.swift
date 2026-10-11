@@ -2,10 +2,14 @@ import ClaudometerCore
 import Foundation
 import UserNotifications
 
-/// Local alerts when a limit crosses a threshold or resets (TZ FR-19…FR-21).
+/// Local alerts when a limit crosses a threshold or resets (TZ FR-19…FR-21), and when usage
+/// stops updating.
 @MainActor
 final class NotificationManager {
     private var tracker: ThresholdTracker
+    private var outage: OutageTracker
+    nonisolated static let outageIdentifier = "outage"
+    nonisolated static let updateIdentifier = "update"
 
     /// `UNUserNotificationCenter` crashes in a process without a bundle (e.g. `swift run`).
     static var isAvailable: Bool { Bundle.main.bundleIdentifier != nil && Bundle.main.bundleURL.pathExtension == "app" }
@@ -22,6 +26,8 @@ final class NotificationManager {
                 nearLimit: Set(d.stringArray(forKey: SettingsKey.legacyNearLimitWindows) ?? [])
             )
         }
+        outage = d.data(forKey: SettingsKey.outageTracker)
+            .flatMap { try? JSONDecoder().decode(OutageTracker.self, from: $0) } ?? OutageTracker()
     }
 
     static func requestAuthorization() async -> Bool {
@@ -41,6 +47,48 @@ final class NotificationManager {
         for event in events { send(event, lowerThreshold: settings.notifyLow) }
     }
 
+    /// After every fetch: `error` is nil on success. `fetchedAt` is the last known data's time.
+    func processOutage(error: AppError?, fetchedAt: Date?, settings: AppSettings) {
+        // Always evaluate, so an outage that began while alerts were off doesn't fire later.
+        let previous = outage
+        let event = outage.record(error: error)
+        if outage != previous, let data = try? JSONEncoder().encode(outage) {
+            UserDefaults.standard.set(data, forKey: SettingsKey.outageTracker)
+        }
+        guard let event, Self.isAvailable else { return }
+        let center = UNUserNotificationCenter.current()
+        switch event {
+        case .recovered:
+            center.removeDeliveredNotifications(withIdentifiers: [Self.outageIdentifier])
+        case .stopped(let error):
+            guard settings.notifyOutage else { return }
+            let content = UNMutableNotificationContent()
+            content.title = tr("Claudometer can’t update usage")
+            content.body = [error.message.replacingOccurrences(of: "`", with: ""),
+                            fetchedAt.map { Formatters.dataFromText($0) + "." }]
+                .compactMap { $0 }.joined(separator: " ")
+            let request = UNNotificationRequest(identifier: Self.outageIdentifier, content: content, trigger: nil)
+            // On by default, so permission may not have been asked yet; the system asks only once.
+            Task {
+                guard await Self.requestAuthorization() else { return }
+                try? await center.add(request)
+            }
+        }
+    }
+
+    /// A newer release; clicking it opens the download page (see `AppDelegate`).
+    static func sendUpdate(_ release: AppRelease) {
+        let content = UNMutableNotificationContent()
+        content.title = tr("Claudometer %@ is available", release.version)
+        content.body = tr("Click to download it from GitHub.")
+        content.userInfo = ["url": release.pageURL.absoluteString]
+        let request = UNNotificationRequest(identifier: updateIdentifier, content: content, trigger: nil)
+        Task {
+            guard await requestAuthorization() else { return }
+            try? await UNUserNotificationCenter.current().add(request)
+        }
+    }
+
     /// Identifiers are per window and threshold, so a repeat replaces the banner instead of
     /// stacking a second one.
     private func send(_ event: ThresholdTracker.Event, lowerThreshold: Int) {
@@ -49,15 +97,15 @@ final class NotificationManager {
         let identifier: String
         switch event {
         case .crossed(let window, let threshold):
-            content.title = "\(window.title): \(Formatters.percent(window.utilization)) used"
-            content.body = "Passed \(threshold)%. \(Formatters.resetText(window.resetsAt))."
+            content.title = tr("%@: %@ used", window.title, Formatters.percent(window.utilization))
+            content.body = tr("Passed %lld%%. %@.", threshold, Formatters.resetText(window.resetsAt))
             content.sound = threshold >= 95 ? .default : nil
             identifier = "\(window.id)|\(threshold)"
             // The second alert supersedes the first one still sitting in Notification Center.
             if threshold > lowerThreshold { center.removeDeliveredNotifications(withIdentifiers: ["\(window.id)|\(lowerThreshold)"]) }
         case .reset(let window):
-            content.title = "\(window.title) has reset"
-            content.body = "You're back to \(Formatters.percent(window.utilization)) used."
+            content.title = tr("%@ has reset", window.title)
+            content.body = tr("You’re back to %@ used.", Formatters.percent(window.utilization))
             identifier = "\(window.id)|reset"
         }
         center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))

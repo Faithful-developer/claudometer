@@ -26,12 +26,8 @@ APP="build/xcode/Build/Products/Release/Claudometer.app"
 
 echo "▸ Packaging"
 DMG="build/Claudometer-$VERSION.dmg"
-STAGING="$(mktemp -d)"
-trap 'rm -rf "$STAGING"' EXIT
-cp -R "$APP" "$STAGING/"
-ln -s /Applications "$STAGING/Applications"
-rm -f "$DMG"
-hdiutil create -volname "Claudometer $VERSION" -srcfolder "$STAGING" -ov -format UDZO "$DMG" >/dev/null
+# Designed window (background, icon layout, volume icon); asks once to let Terminal control Finder.
+scripts/make-dmg.sh "$APP" "$DMG" "Claudometer $VERSION"
 
 echo "▸ Publishing $TAG"
 git tag -a "$TAG" -m "Claudometer $VERSION"

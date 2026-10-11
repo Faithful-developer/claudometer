@@ -19,11 +19,14 @@ public struct WidgetStyle: Codable, Sendable {
     public var metric: MenuBarMetric
     public var warning: Double
     public var critical: Double
+    /// The app's UI language, already resolved ("en", "ru"); nil in files from older builds.
+    public var language: String?
 
-    public init(metric: MenuBarMetric = .session, warning: Double = 60, critical: Double = 85) {
+    public init(metric: MenuBarMetric = .session, warning: Double = 60, critical: Double = 85, language: String? = nil) {
         self.metric = metric
         self.warning = warning
         self.critical = critical
+        self.language = language
     }
 
     /// The real level for a window (kept when stale so the last known severity stays visible).
@@ -67,16 +70,22 @@ public struct UsageWidgetContent: View {
             case .large: large(snapshot)
             }
         } else {
-            VStack(spacing: 8) {
+            // No data: what's wrong in a few words, and that a click leads to the fix.
+            VStack(spacing: 6) {
                 Image(systemName: "gauge.with.dots.needle.33percent")
                     .font(.title2).foregroundStyle(Ink.secondary)
-                // Markdown (e.g. `claude`) renders like in the popover instead of raw backticks.
-                Text(LocalizedStringKey(state.error?.message ?? "Open Claudometer to start"))
-                    .font(.caption).multilineTextAlignment(.center)
-                    .foregroundStyle(Ink.secondary)
-                    .invalidatableContent()
+                Text(state.error?.shortReason ?? tr("Open Claudometer to start"))
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Ink.primary)
+                if state.error != nil {
+                    Text(tr("Click to open Claudometer"))
+                        .font(.caption)
+                        .foregroundStyle(Ink.secondary)
+                }
                 refreshControl
             }
+            .multilineTextAlignment(.center)
+            .invalidatableContent()
         }
     }
 
@@ -91,7 +100,7 @@ public struct UsageWidgetContent: View {
             }
             .frame(width: 96, height: 96)
             VStack(spacing: 2) {
-                Text(window.map(label) ?? "Usage")
+                Text(window.map(label) ?? tr("Usage"))
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Ink.primary)
                     .truncationMode(.tail)
@@ -99,13 +108,13 @@ public struct UsageWidgetContent: View {
                     if isStale {
                         HStack(spacing: 3) {
                             if Palette.symbol(for: level) != nil { LevelTag(level: level, stale: true, showsText: false) }
-                            Text(Formatters.outOfDateText(snapshot.fetchedAt))
+                            Text(staleText(snapshot, compact: true))
                         }
                     } else if let tag = Palette.label(for: level) {
                         // Symbol + short label, so the state reads without the ring colour.
                         HStack(spacing: 3) {
                             LevelTag(level: level, showsText: false)
-                            Text("\(tag) · \(Formatters.shortReset(window?.resetsAt, now: now))")
+                            Text(verbatim: "\(tag) · \(Formatters.shortReset(window?.resetsAt, now: now))")
                         }
                     } else {
                         Text(Formatters.resetText(window?.resetsAt, now: now))
@@ -119,7 +128,7 @@ public struct UsageWidgetContent: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(window.map { Formatters.accessibilityLabel($0, level: level, stale: isStale, now: now) } ?? "No data")
+        .accessibilityLabel(window.map { Formatters.accessibilityLabel($0, level: level, stale: isStale, now: now) } ?? tr("No data"))
         // Corner button: the ring fills the middle, so the footer row isn't available here.
         .overlay(alignment: .topTrailing) {
             refreshControl.offset(x: 6, y: -6)
@@ -154,7 +163,7 @@ public struct UsageWidgetContent: View {
             }
             .frame(minWidth: 96)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(hero.map { Formatters.accessibilityLabel($0, level: level, stale: isStale, now: now) } ?? "No data")
+            .accessibilityLabel(hero.map { Formatters.accessibilityLabel($0, level: level, stale: isStale, now: now) } ?? tr("No data"))
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(others) { row($0, caption: true) }
                 Spacer(minLength: 0)
@@ -172,10 +181,10 @@ public struct UsageWidgetContent: View {
         let level = style.level(hero)
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Claudometer").font(.system(size: 13, weight: .bold)).foregroundStyle(Ink.primary)
+                Text(verbatim: "Claudometer").font(.system(size: 13, weight: .bold)).foregroundStyle(Ink.primary)
                 Spacer()
                 if let plan = Formatters.planName(snapshot.plan) {
-                    Text("\(plan) plan").font(.system(size: 11)).foregroundStyle(Ink.secondary)
+                    Text(tr("%@ plan", plan)).font(.system(size: 11)).foregroundStyle(Ink.secondary)
                 }
             }
             if let hero {
@@ -205,7 +214,7 @@ public struct UsageWidgetContent: View {
                 // The table legend fills the card when there's room; with two or more limit
                 // rows the one-line legend keeps everything inside the large size.
                 VStack(alignment: .leading, spacing: 6) {
-                    SectionHeader("Usage by Surface This Week")
+                    SectionHeader(tr("Usage by Surface This Week"))
                     BreakdownChart(rows: snapshot.breakdown, legend: others.count <= 1 ? .table : .inline, dimmed: isStale)
                 }
             }
@@ -220,7 +229,7 @@ public struct UsageWidgetContent: View {
         let level = style.level(window)
         return VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 4) {
-                Text(window.group == .weekly ? "Weekly · \(window.shortTitle)" : window.title)
+                Text(window.compactTitle)
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .foregroundStyle(Ink.secondary)
@@ -251,9 +260,12 @@ public struct UsageWidgetContent: View {
             Group {
                 if isStale {
                     Image(systemName: "exclamationmark.arrow.circlepath").foregroundStyle(Palette.warningGlyph)
-                    Text(Formatters.outOfDateText(snapshot.fetchedAt)).foregroundStyle(Ink.secondary)
+                    Text(staleText(snapshot, compact: false))
+                        .foregroundStyle(Ink.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 } else {
-                    Text("Updated \(snapshot.fetchedAt.formatted(date: .omitted, time: .shortened))").foregroundStyle(Ink.tertiary)
+                    Text(tr("Updated %@", Formatters.time(snapshot.fetchedAt))).foregroundStyle(Ink.tertiary)
                 }
             }
             // Shimmers while the refresh intent runs, until the app reloads the timeline.
@@ -267,10 +279,20 @@ public struct UsageWidgetContent: View {
         .lineLimit(1)
     }
 
+    /// Why the data is old and what to do: "Login expired · Click to fix" when the user has
+    /// to act, "Offline · 14:05" while it may sort itself out, "Out of date · 14:05" otherwise.
+    /// `compact` (small widget) keeps just the reason when the user has to act; the whole
+    /// widget is the click target there.
+    private func staleText(_ snapshot: UsageSnapshot, compact: Bool) -> String {
+        guard let error = state.error else { return Formatters.outOfDateText(snapshot.fetchedAt) }
+        guard error.needsUserAction else { return tr("%@ · %@", error.shortReason, Formatters.time(snapshot.fetchedAt)) }
+        return compact ? error.shortReason : tr("%@ · %@", error.shortReason, tr("Click to fix"))
+    }
+
     private func label(_ window: LimitWindow) -> String {
         switch window.group {
-        case .session: return "Session"
-        case .weekly: return window.id == "weekly_all" ? "Weekly" : "Weekly · \(window.shortTitle)"
+        case .session: return tr("Session")
+        case .weekly: return window.id == "weekly_all" ? tr("Weekly") : tr("Weekly · %@", window.shortTitle)
         case .other: return window.title
         }
     }
@@ -286,6 +308,6 @@ public struct RefreshGlyph: View {
             .foregroundStyle(Ink.secondary)
             .frame(width: 22, height: 22)
             .contentShape(Rectangle())
-            .accessibilityLabel("Refresh")
+            .accessibilityLabel(tr("Refresh"))
     }
 }
