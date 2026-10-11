@@ -15,6 +15,7 @@ struct PopoverView: View {
     @AppStorage(SettingsKey.menuBarMetric) private var metric = MenuBarMetric.session.rawValue
     @Environment(\.isPreviewRender) private var isPreviewRender
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -130,8 +131,7 @@ struct PopoverView: View {
             if isPreviewRender {
                 MenuRowLabel(title: "Settings…", shortcut: "⌘,").padding(.horizontal, 5)
             } else {
-                SettingsLink { MenuRowLabel(title: "Settings…", shortcut: "⌘,") }
-                    .buttonStyle(MenuRowStyle())
+                MenuRow(title: "Settings…", shortcut: "⌘,") { SettingsWindow.open(openSettings) }
                     .keyboardShortcut(",")
             }
             MenuRow(title: "Quit Claudometer", shortcut: "⌘Q") { NSApp.terminate(nil) }

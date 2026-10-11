@@ -17,7 +17,54 @@ struct SettingsView: View {
                 .tabItem { Label("About", systemImage: "info.circle") }
         }
         .frame(width: 460)
-        .onAppear { NSApp.activate() }
+        .onHostingWindow(SettingsWindow.attach)
+    }
+}
+
+/// Keeps the Settings window on the user's current desktop and in front of other apps.
+/// An accessory app isn't frontmost, so without this the window can open behind them.
+@MainActor
+enum SettingsWindow {
+    private static weak var window: NSWindow?
+
+    /// Settings… in the menu: open the window, or reuse the open one, and bring it forward.
+    static func open(_ openSettings: OpenSettingsAction) {
+        activate()
+        openSettings()
+        // Close the menu first: if focus goes back to the previous app, its windows come up,
+        // and Settings has to go on top of them afterwards.
+        DispatchQueue.main.async {
+            MenuBarMenu.close()
+            DispatchQueue.main.async { bringForward() }
+        }
+    }
+
+    fileprivate static func attach(_ window: NSWindow?) {
+        guard let window, self.window !== window else { return }
+        self.window = window
+        // Settings… from another desktop brings the window here instead of switching desktops.
+        window.collectionBehavior.insert(.moveToActiveSpace)
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: window, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated { _ = NSApp.setActivationPolicy(.accessory) }
+        }
+        bringForward()
+    }
+
+    private static func bringForward() {
+        guard let window else { return }
+        activate()
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
+    }
+
+    /// macOS doesn't let an accessory app (no Dock icon) take focus from the frontmost app,
+    /// even right after a click in its menu. So while Settings is open Claudometer is a regular
+    /// app, with a Dock icon, and goes back to accessory when the window closes.
+    private static func activate() {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate()
     }
 }
 

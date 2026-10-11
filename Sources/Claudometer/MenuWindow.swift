@@ -49,7 +49,7 @@ struct FitMenuWindowHeight: ViewModifier {
     private func fitted(_ content: Content) -> some View {
         content
             .fixedSize(horizontal: false, vertical: true)
-            .background(WindowReader(holder: holder))
+            .onHostingWindow(holder.attach)
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
                 holder.fit(contentHeight: height)
             }
@@ -58,16 +58,67 @@ struct FitMenuWindowHeight: ViewModifier {
 
 extension View {
     func fitsMenuWindowHeight() -> some View { modifier(FitMenuWindowHeight()) }
+
+    /// Calls `action` with the AppKit window hosting this view, once it is in one.
+    func onHostingWindow(_ action: @escaping (NSWindow?) -> Void) -> some View {
+        background(WindowReader(onWindow: action))
+    }
+}
+
+/// The menu bar item's menu, i.e. the `MenuBarExtra` panel.
+@MainActor
+enum MenuBarMenu {
+    fileprivate static weak var window: NSWindow?
+
+    /// Closes the menu the way a click on the icon does, so the icon's highlight goes too.
+    /// (`NSWindow.close()` alone hides the panel but leaves the icon highlighted.)
+    static func close() {
+        guard let window, window.isVisible else { return }
+        if let button = statusItemButton() {
+            button.performClick(nil)
+        } else {
+            window.close()
+        }
+    }
+
+    /// SwiftUI doesn't expose the `NSStatusItem` behind `MenuBarExtra`, so look for its
+    /// button in the status bar window that hosts it.
+    private static func statusItemButton() -> NSStatusBarButton? {
+        func find(in view: NSView) -> NSStatusBarButton? {
+            if let button = view as? NSStatusBarButton { return button }
+            return view.subviews.lazy.compactMap(find).first
+        }
+        return NSApp.windows.lazy
+            .filter { $0.className == "NSStatusBarWindow" }
+            .compactMap { $0.contentView.flatMap(find) }
+            .first
+    }
 }
 
 @MainActor
 final class WindowHolder: ObservableObject {
     weak var window: NSWindow?
     private var pendingHeight: CGFloat?
+    private var spaceObserver: NSObjectProtocol?
+
+    /// Like system menus, the menu closes when the user switches desktops. Otherwise an
+    /// accessory app's panel never resigns key and stays open on the desktop it was opened on.
+    init() {
+        spaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated { MenuBarMenu.close() }
+        }
+    }
+
+    deinit {
+        if let spaceObserver { NSWorkspace.shared.notificationCenter.removeObserver(spaceObserver) }
+    }
 
     func attach(_ window: NSWindow?) {
         guard let window, self.window !== window else { return }
         self.window = window
+        MenuBarMenu.window = window
         if let pendingHeight { fit(contentHeight: pendingHeight) }
     }
 
@@ -86,15 +137,15 @@ final class WindowHolder: ObservableObject {
 }
 
 private struct WindowReader: NSViewRepresentable {
-    let holder: WindowHolder
+    let onWindow: (NSWindow?) -> Void
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
-        DispatchQueue.main.async { holder.attach(view.window) }
+        DispatchQueue.main.async { onWindow(view.window) }
         return view
     }
 
     func updateNSView(_ view: NSView, context: Context) {
-        DispatchQueue.main.async { holder.attach(view.window) }
+        DispatchQueue.main.async { onWindow(view.window) }
     }
 }
