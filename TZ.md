@@ -207,8 +207,8 @@ enum UsageState: Codable {
 - **NFR-3 · Performance:** at idle the app uses less than 1% CPU and less than 50 MB RSS. Each fetch uses less than 50 KB of network traffic.
 - **NFR-4 · Privacy and security:**
   - The access token stays in memory only. It is never written to disk, `UserDefaults`, logs or the App Group container.
-  - Network hosts: `api.anthropic.com`, `claude.ai` if the fallback is enabled, and GitHub (`api.github.com` for the daily release check, `github.com` to download an update the user installs).
-  - There is no analytics and no telemetry.
+  - Network hosts: `api.anthropic.com`, `claude.ai` if the fallback is enabled, GitHub (`api.github.com` for the daily release check, `github.com` to download an update the user installs) and the check-in Worker (`claudometer-stats.claudometer.workers.dev`).
+  - One check-in a day (`CheckIn`, on by default, no switch in Settings): a random ID made on the Mac, app version, language and macOS version, sent to the `server/checkin` Cloudflare Worker. It stores one row per install per UTC day, no IP addresses, and deletes rows after 90 days. `defaults write dev.claudometer.app sendCheckIn -bool false` turns it off and deletes the ID. No other analytics or telemetry.
   - Logs go through `os.Logger` with `privacy: .private` on anything sensitive.
 - **NFR-5 · UX:**
   - Supports light and dark mode.
@@ -250,6 +250,7 @@ enum UsageState: Codable {
 | `UsageHistory` | Shared | Compact samples of successful fetches (about a week) for the 7-day chart and the "at this pace" forecast (F-3, F-4) |
 | `OutageTracker` | Shared | When to send the FR-29 notification |
 | `UpdateChecker` | Shared | Latest GitHub release, its DMG and SHA-256 |
+| `CheckIn` / `CheckInService` | Shared / App | Daily check-in (NFR-4) |
 | `UpdateStore` / `UpdateInstaller` | App | Daily check; **Install Update** downloads, verifies (SHA-256, bundle id, version, code signature), swaps the app and relaunches |
 
 ### 5.3 Data flow
@@ -435,9 +436,9 @@ Stale data (E-3 to E-6) is still displayed but greyed out, with a "Showing data 
 
 - **Q-1:** Do the exact response fields (`seven_day_sonnet`, extra-usage or "overage" fields) differ between Pro and Max? This is answered in M1.
 - **Q-2:** Should the app ask Claude Code to refresh an expired token? **Answered:** no. Tested on 2026-10-11: `claude auth status` doesn't renew an expired token, and `claude -p` would spend usage. The claude.ai session key (§2.3) covers this case.
-- **F-1:** The claude.ai cookie fallback (§2.3) for users who don't use Claude Code.
+- **F-1:** ~~The claude.ai cookie fallback (§2.3) for users who don't use Claude Code.~~ Done: the session key in Settings › Login.
 - **F-2:** Multiple accounts or organisations.
-- **F-3:** ~~A local usage history: store snapshots and show a 7-day chart in the popover.~~ Done (next release).
-- **F-4:** ~~Show the "burn rate" and the projected time to the limit at the current pace.~~ Done (next release): shown only when the limit would be hit before it resets.
+- **F-3:** ~~A local usage history: store snapshots and show a 7-day chart in the popover.~~ Done in 0.2.1.
+- **F-4:** ~~Show the "burn rate" and the projected time to the limit at the current pace.~~ Done in 0.2.1: shown only when the limit would be hit before it resets.
 - **F-5:** A Raycast extension, an Übersicht widget, or an iOS companion that reads the same data.
 - **F-6:** Distribution and updates. **Done without Sparkle:** in-app updates (`UpdateInstaller`), a personal Homebrew tap (`Faithful-developer/homebrew-tap`, bumped by `scripts/release.sh`) and `scripts/install.sh`. **Open:** the main `homebrew/cask` tap and a warning-free first launch both need Developer ID signing and notarization.

@@ -72,7 +72,7 @@ fi
 say "▸ Installing to $DEST"
 rm -rf "$DEST/Claudometer.app"
 # No extended attributes: no quarantine flag, so no Gatekeeper prompt on first launch.
-ditto --noextattr --noqtn "$MOUNT/Claudometer.app" "$DEST/Claudometer.app"
+ditto --norsrc --noextattr --noqtn "$MOUNT/Claudometer.app" "$DEST/Claudometer.app"
 
 if [[ -z "${CLAUDOMETER_NO_OPEN:-}" ]]; then
     open "$DEST/Claudometer.app"

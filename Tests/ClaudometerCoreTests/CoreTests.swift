@@ -611,3 +611,21 @@ private func json(_ string: String) -> Data { Data(string.utf8) }
         #expect(HistoryStore(fileURL: file).load() == history)
     }
 }
+
+@Suite struct CheckInTests {
+    private func utc(_ text: String) -> Date { ISO8601DateFormatter().date(from: text)! }
+
+    @Test func dueOncePerUTCDay() {
+        #expect(CheckIn.isDue(lastSent: nil, now: utc("2026-10-11T10:00:00Z")))
+        #expect(!CheckIn.isDue(lastSent: utc("2026-10-11T00:05:00Z"), now: utc("2026-10-11T23:55:00Z")))
+        #expect(CheckIn.isDue(lastSent: utc("2026-10-11T23:55:00Z"), now: utc("2026-10-12T00:05:00Z")))
+        // A clock set back doesn't send again.
+        #expect(!CheckIn.isDue(lastSent: utc("2026-10-12T09:00:00Z"), now: utc("2026-10-11T09:00:00Z")))
+    }
+
+    @Test func sendsOnlyTheFourFields() throws {
+        let data = try JSONEncoder().encode(CheckIn(id: "abc", version: "0.2.2", language: "ru", os: "26.0"))
+        let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: String])
+        #expect(object == ["id": "abc", "version": "0.2.2", "language": "ru", "os": "26.0"])
+    }
+}

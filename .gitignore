@@ -12,3 +12,8 @@ Claudometer.xcodeproj/
 /graphify-out/
 scripts/dmg/preview@2x.png
 scripts/dmg/mock-*.png
+
+# Check-in Worker local state
+server/checkin/.wrangler/
+server/checkin/.dev.vars
+server/checkin/node_modules/

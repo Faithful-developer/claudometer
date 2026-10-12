@@ -22,11 +22,13 @@ A tiny macOS menu bar app (plus a desktop widget) that shows how much of your **
 - It saves only usage numbers (the last percentages and reset times, plus about a week of history for the chart; no token) to `~/Library/Application Support/Claudometer/`, so the widget can show them.
 - *Optional, off by default:* a claude.ai `sessionKey` you paste in yourself (see [claude.ai backup](#optional-claudeai-backup)).
 
+**Sends** a check-in once a day, so the developer can count how many people use Claudometer: a random ID made on your Mac, the app version, language and macOS version. Nothing about your Claude account or usage, and the server stores no IP addresses and deletes rows after 90 days ([`server/checkin`](server/checkin/src/index.js)). To turn it off (this also forgets the ID), run `defaults write dev.claudometer.app sendCheckIn -bool false`.
+
 **Never**
 - Never writes a token or key to disk, `UserDefaults`, logs or the widget's folder. Tokens stay in memory; the optional session key lives only in Claudometer's own Keychain item.
 - Never logs credentials or usage.
-- Never talks to any server except Anthropic (`api.anthropic.com`, and `claude.ai` only if you enable the backup) and GitHub (`api.github.com`, a daily anonymous check for new releases, and `github.com` when you install an update).
-- No analytics, no telemetry, no third-party services.
+- Never talks to any server except Anthropic (`api.anthropic.com`, and `claude.ai` only if you enable the backup), GitHub (`api.github.com`, a daily anonymous check for new releases, and `github.com` when you install an update) and the check-in counter above (`claudometer-stats.claudometer.workers.dev`).
+- No analytics SDKs, no tracking, no third-party services.
 
 The code is short and open, so you can check all of this yourself: [`CredentialsProvider`](Sources/ClaudometerCore/CredentialsProvider.swift), [`UsageAPIClient`](Sources/ClaudometerCore/UsageAPIClient.swift), [`UsageService`](Sources/ClaudometerCore/UsageService.swift).
 
@@ -119,6 +121,7 @@ Resources/                 app icon, Localization/{en,ru}.lproj, DMG/background.
 scripts/                   build-app.sh, build-xcode.sh, test.sh, release.sh, install.sh,
                            make-dmg.sh, dmg/ (DMG artwork source), make-icon.swift
 Config/                    entitlements for the Xcode build
+server/checkin/            Cloudflare Worker that counts the daily check-ins
 TZ.md                      technical specification
 ```
 
@@ -146,6 +149,7 @@ Claudometer follows Apple's Human Interface Guidelines and looks like a built-in
 - `scripts/make-dmg.sh` lays out the DMG window through Finder: the first run asks to let Terminal control Finder (and uses Accessibility, if allowed, to size the window exactly). The artwork is `scripts/dmg/background.html`; `scripts/dmg/render-background.sh` regenerates `Resources/DMG/background.tiff` (needs Chrome) and `scripts/dmg/mock.sh` previews it with Finder's light and dark labels.
 - `Claudometer --install-update` installs whatever the first update check finds, for testing the update path from a build with a lower `VERSION`.
 - Notifications and launch at login only work from the bundled `.app`, not from `swift run`.
+- **Check-in counter** (`server/checkin`, Cloudflare Worker + D1): `npx wrangler@4 deploy` from that folder after `npx wrangler@4 login`. Stats at `/stats` (any user name, the `STATS_KEY` secret as the password; set it with `npx wrangler@4 secret put STATS_KEY`). Local test: `npx wrangler@4 dev --local` with `STATS_KEY=…` in `.dev.vars`.
 
 ## License
 

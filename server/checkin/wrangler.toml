@@ -1,0 +1,14 @@
+# Claudometer's anonymous check-in counter. Deploy: see README "Check-in counter".
+name = "claudometer-stats"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "claudometer-stats"
+database_id = "a7bed6de-528f-4e6a-85a5-62d465b9a72b"
+
+# Daily: delete rows older than 90 days.
+[triggers]
+crons = ["17 3 * * *"]

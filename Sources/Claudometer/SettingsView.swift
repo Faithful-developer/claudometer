@@ -452,7 +452,7 @@ struct AboutSettings: View {
             Text(tr("Unofficial. Not affiliated with Anthropic."))
                 .font(.callout.weight(.medium))
                 .foregroundStyle(.secondary)
-            Text(tr("Your Claude plan limits in the menu bar.\nReads your Claude Code login, or your claude.ai session key if you add one; nothing leaves your Mac except the usage requests to Anthropic."))
+            Text(tr("Your Claude plan limits in the menu bar.\nReads your Claude Code login, or your claude.ai session key if you add one."))
                 .font(.callout)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)

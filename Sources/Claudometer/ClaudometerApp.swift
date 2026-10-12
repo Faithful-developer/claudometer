@@ -21,6 +21,7 @@ struct ClaudometerApp: App {
         store = UsageStore()
         store.start()
         updates.start()
+        CheckInService.start()
         AppDelegate.store = store
         AppDelegate.updates = updates
     }

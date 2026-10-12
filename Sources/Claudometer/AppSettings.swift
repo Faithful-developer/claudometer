@@ -27,6 +27,10 @@ enum SettingsKey {
     static let notifyUpdates = "notifyUpdates"
     /// Last release version announced in a notification, so each version alerts once.
     static let notifiedUpdateVersion = "notifiedUpdateVersion"
+    /// Daily check-in (`CheckIn`), on by default and not shown in Settings; the random ID and the last send.
+    static let sendCheckIn = "sendCheckIn"
+    static let checkInID = "checkInID"
+    static let checkInLastSent = "checkInLastSent"
     /// Selected Settings tab, so other views can open Settings on a given tab.
     static let settingsTab = "settingsTab"
     /// Set once Open at Login has been turned on by default, so a later "off" sticks.
@@ -73,6 +77,7 @@ struct AppSettings {
         SettingsKey.notifyOutage: true,
         SettingsKey.language: "system",
         SettingsKey.notifyUpdates: true,
+        SettingsKey.sendCheckIn: true,
     ]
 
     static func register() {

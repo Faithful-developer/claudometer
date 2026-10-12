@@ -166,7 +166,7 @@
 /* Settings: About */
 "Version %@" = "Версия %@";
 "Unofficial. Not affiliated with Anthropic." = "Неофициальное приложение. Не связано с Anthropic.";
-"Your Claude plan limits in the menu bar.\nReads your Claude Code login, or your claude.ai session key if you add one; nothing leaves your Mac except the usage requests to Anthropic." = "Лимиты вашего плана Claude в строке меню.\nИспользует вход Claude Code или ключ сессии claude.ai, если вы его добавите; кроме запросов данных об использовании к Anthropic, ничего не покидает ваш Mac.";
+"Your Claude plan limits in the menu bar.\nReads your Claude Code login, or your claude.ai session key if you add one." = "Лимиты вашего плана Claude в строке меню.\nИспользует вход Claude Code или ключ сессии claude.ai, если вы его добавите.";
 "Download %@…" = "Скачать %@…";
 "Check for Updates" = "Проверить обновления";
 "Update checks need the bundled app." = "Проверка обновлений работает только в собранном приложении.";
