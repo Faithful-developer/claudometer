@@ -170,3 +170,12 @@ public struct OutageTracker: Codable, Equatable, Sendable {
         return .stopped(error)
     }
 }
+
+/// Notification identifiers, one per account (TZ F-2). The Claude Code account keeps the
+/// identifiers used before accounts existed, so an alert already in Notification Center is
+/// still replaced rather than repeated.
+public enum NotificationID {
+    public static func make(account: String, _ name: String) -> String {
+        account == Account.primaryID ? name : "\(account)|\(name)"
+    }
+}

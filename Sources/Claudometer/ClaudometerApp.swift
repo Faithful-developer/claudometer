@@ -68,7 +68,8 @@ struct MenuBarLabel: View {
             extras: (rings?.extras ?? []).map { MenuBarIcon.Ring(window: $0, level: level($0), letter: true) },
             stale: store.state.isStale || store.state.error != nil,
             compact: compact,
-            updateBadge: updates.available != nil
+            updateBadge: updates.available != nil,
+            account: store.hasManyAccounts ? store.selected.title : nil
         ))
         .onAppear { SettingsWindow.openAction = openSettings }
     }
@@ -110,13 +111,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
     }
 
-    /// A widget click refreshes, and when the problem needs the user (login expired, signed
-    /// out, …) also opens Settings where it's fixed: the menu bar popover can't be opened from
-    /// code, and an accessory app would otherwise show nothing.
+    /// A widget click selects its account (`claudometer://open?account=<id>`) and refreshes,
+    /// and when the problem needs the user (login expired, signed out, …) also opens Settings
+    /// where it's fixed: the menu bar popover can't be opened from code, and an accessory app
+    /// would otherwise show nothing.
     func application(_ application: NSApplication, open urls: [URL]) {
-        guard urls.contains(where: { $0.scheme == "claudometer" }) else { return }
+        guard let url = urls.first(where: { $0.scheme == "claudometer" }) else { return }
+        let account = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?.first { $0.name == "account" }?.value
         Task { @MainActor in
             guard let store = Self.store else { return }
+            if let account { store.select(account) }
             store.refresh()
             switch store.state.error {
             case .notSignedIn?, .tokenExpired?, .sessionKeyInvalid?, .keychainDenied?: SettingsWindow.open(tab: .login)

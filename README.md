@@ -2,7 +2,7 @@
 
 # Claudometer — unofficial Claude usage meter
 
-A tiny macOS menu bar app (plus a desktop widget) that shows how much of your **Claude plan limits** you've used: the 5‑hour session window and the weekly windows, each with a reset countdown. When another limit runs high (say weekly at 80%), it gets its own lettered ring in the menu bar so you don't miss it, and in Settings you can keep weekly or per-model limits (like Fable) next to the session ring all the time. The popover also charts the last 7 days and, when you're using a limit fast, says when you'd hit it at this pace. Click any limit to copy all your limits as an image. In English or Russian.
+A tiny macOS menu bar app (plus a desktop widget) that shows how much of your **Claude plan limits** you've used: the 5‑hour session window and the weekly windows, each with a reset countdown. When another limit runs high (say weekly at 80%), it gets its own lettered ring in the menu bar so you don't miss it, and in Settings you can keep weekly or per-model limits (like Fable) next to the session ring all the time. The popover also charts the last 7 days and, when you're using a limit fast, says when you'd hit it at this pace. Click any limit to copy all your limits as an image. Have a personal and a work account? Add up to three more with a claude.ai session key and switch between them in the popover. In English or Russian.
 
 > **Unofficial.** Claudometer is an independent open-source project. It is not affiliated with, endorsed by or supported by Anthropic. It relies on an **undocumented** usage endpoint that may change or stop working at any time; if the format changes, the app says "Usage format not recognised" instead of showing wrong numbers.
 
@@ -21,6 +21,7 @@ A tiny macOS menu bar app (plus a desktop widget) that shows how much of your **
 - Your usage from `api.anthropic.com/api/oauth/usage`, the same account endpoint Claude Code uses.
 - It saves only usage numbers (the last percentages and reset times, plus about a week of history for the chart; no token) to `~/Library/Application Support/Claudometer/`, so the widget can show them.
 - *Optional, off by default:* a claude.ai `sessionKey` you paste in yourself (see [claude.ai backup](#optional-claudeai-backup)).
+- *Only when you save a session key:* the organization ID in Claude Code's `~/.claude.json`, to tell whether the key belongs to your Claude Code account or to [another account](#optional-more-accounts). Nothing else in that file is read.
 
 **Sends** a check-in once a day, so the developer can count how many people use Claudometer: a random ID made on your Mac, the app version, language and macOS version. Nothing about your Claude account or usage, and the server stores no IP addresses and deletes rows after 90 days ([`server/checkin`](server/checkin/src/index.js)). To turn it off (this also forgets the ID), run `defaults write dev.claudometer.app sendCheckIn -bool false`.
 
@@ -88,19 +89,29 @@ No Apple developer team is needed. The app and widget share data through `~/Libr
 
 ## Optional: claude.ai backup
 
-Claude Code refreshes its login only while it's running, so after about 8 hours with Claude Code closed the token expires and Claudometer shows the last known numbers. If you want usage to stay live anyway, paste your claude.ai `sessionKey` cookie in **Settings → Login** and press **Save & Test**.
+Claude Code refreshes its login only while it's running, so after about 8 hours with Claude Code closed the token expires and Claudometer shows the last known numbers. If you want usage to stay live anyway, paste your claude.ai `sessionKey` cookie in **Settings → Accounts** and press **Save & Test**.
 
 - **Off by default.** Nothing happens unless you paste a key.
 - Used **only** while Claude Code's login is expired or missing; Claude Code's login always comes first.
 - Stored only in Claudometer's own Keychain item and sent only to `claude.ai`. **Remove** deletes it.
 - It's your full claude.ai web session and the claude.ai endpoint is also undocumented, so skip this if you're not comfortable with that.
 
+## Optional: more accounts
+
+To watch another Claude account too (say a work Team plan next to your personal one), paste the `sessionKey` of a browser signed in to it under **Settings → Accounts → Add Account**. You can add up to three.
+
+- The popover gets a switcher (⌘1…⌘4), and the menu bar shows the account you pick there.
+- Each desktop widget shows the account you choose in **Edit Widget**.
+- Limit and outage alerts cover every account, with its name in the title. Being offline gives a single alert.
+- If the key turns out to be your Claude Code account, it's saved as that account's backup instead of being added twice. If the login has several organizations, you pick one.
+- Each key gets its own Keychain item, sent only to `claude.ai`. **Remove Account…** deletes the key and that account's history.
+
 ## How it works
 
 | Piece | What it does |
 |---|---|
 | `CredentialsProvider` | Reads Claude Code's OAuth token from the Keychain item `Claude Code-credentials` through `/usr/bin/security` (read-only; never stored or logged) |
-| `ClaudeWebClient` | Backup source: claude.ai's usage API with the `sessionKey` cookie you paste in *Settings → Login*. Used only while Claude Code's login is expired (Claude Code refreshes it only while running) |
+| `ClaudeWebClient` | Backup source: claude.ai's usage API with the `sessionKey` cookie you paste in *Settings → Accounts*. For the Claude Code account, used only while its login is expired (Claude Code refreshes it only while running); added accounts always use it |
 | `UsageAPIClient` | `GET https://api.anthropic.com/api/oauth/usage` with `anthropic-beta: oauth-2025-04-20` |
 | `UsageDecoder` | Tolerant parsing. Prefers the `limits` array and falls back to the legacy `five_hour` / `seven_day*` keys. Unknown limit kinds are still shown |
 | `UsageStore` | Polls every 5 min by default (1–30). Backs off exponentially on errors (1→2→4→8→15 min), honours `Retry-After`, and refreshes on wake or when the network comes back |
@@ -135,14 +146,14 @@ Claudometer follows Apple's Human Interface Guidelines and looks like a built-in
 - **Warnings:** system orange and red appear only above your thresholds, always with an SF Symbol and a label.
 - **Menu bar icon:** monochrome like other system icons until usage needs attention.
 - **Actions:** full-width menu rows with keyboard shortcuts (⌘R, ⌘,, ⌘Q) and an accent-coloured hover highlight.
-- **Settings:** toolbar tabs (General, Notifications, Login, About) with grouped forms.
+- **Settings:** toolbar tabs (General, Notifications, Accounts, About) with grouped forms.
 - **Meters:** capacity rings and bars, like the Batteries widget. A 2pt tick marks how much of the window's time has passed, so you can see your pace.
 - **Usage by surface:** one stacked bar with a legend that lists each value. Series follow the palette order: Usage coral (Claude Code), plum (Chats), teal (Cowork). The dark steps were picked to keep the hues and still pass the data-viz colour-blind checks.
 - **Shared code:** the components live in `Sources/ClaudometerCore/UI/`, so the popover and widgets match.
 
 ## Developer notes
 
-- `Claudometer --render-previews <dir> [--sample high|rings|pinned|stale|expired|signedout] [--language ru]` renders the menu bar icon, popover, settings and all three widget sizes (light and dark) to PNGs, then exits. It uses the cached state, or made-up numbers: `--sample high` for high usage, `--sample rings` for two other limits high enough to get extra menu bar rings, `--sample pinned` for weekly and Fable added to the menu bar. It's used for the screenshots above.
+- `Claudometer --render-previews <dir> [--sample high|rings|pinned|stale|expired|signedout|accounts] [--language ru]` renders the menu bar icon, popover, settings and all three widget sizes (light and dark) to PNGs, then exits. It uses the cached state, or made-up numbers: `--sample high` for high usage, `--sample rings` for two other limits high enough to get extra menu bar rings, `--sample pinned` for weekly and Fable added to the menu bar, `--sample accounts` for four accounts, the most there can be. It's used for the screenshots above.
 - UI text goes through `tr("English text")`; add the Russian to `Resources/Localization/ru.lproj` (a test fails on missing keys).
 - `swift scripts/make-icon.swift` regenerates `Resources/AppIcon.icns`.
 - `scripts/release.sh 0.2.0 "notes"` builds the app with the widget, packages a DMG, tags `v0.2.0`, publishes the GitHub release and bumps the cask in [Faithful-developer/homebrew-tap](https://github.com/Faithful-developer/homebrew-tap). Always bump the version: the in-app update check compares it with the latest release.

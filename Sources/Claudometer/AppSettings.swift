@@ -31,13 +31,15 @@ enum SettingsKey {
     static let sendCheckIn = "sendCheckIn"
     static let checkInID = "checkInID"
     static let checkInLastSent = "checkInLastSent"
+    /// Account shown in the popover and the menu bar (`Account.id`).
+    static let selectedAccount = "selectedAccount"
     /// Selected Settings tab, so other views can open Settings on a given tab.
     static let settingsTab = "settingsTab"
     /// Set once Open at Login has been turned on by default, so a later "off" sticks.
     static let loginItemOffered = "loginItemOffered"
-    /// `ThresholdTracker` as JSON.
+    /// `ThresholdTracker` as JSON; added accounts append `.<account id>`.
     static let notificationCycles = "notificationCycles"
-    /// `OutageTracker` as JSON.
+    /// `OutageTracker` as JSON; added accounts append `.<account id>`.
     static let outageTracker = "outageTracker"
     /// Replaced by `notificationCycles`; read once to migrate, then removed.
     static let legacyFiredNotifications = "firedNotifications"

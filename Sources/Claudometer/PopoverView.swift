@@ -21,6 +21,11 @@ struct PopoverView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
+            if store.hasManyAccounts {
+                AccountSwitcher()
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 6)
+            }
             // Countdowns tick every 30 s without a network call (FR-9).
             TimelineView(.periodic(from: .now, by: 30)) { context in
                 content(now: context.date)
@@ -63,13 +68,14 @@ struct PopoverView: View {
             return store.history.forecast(for: window, at: fetched)
         }
         let weeklyId = snapshot?.weekly?.id ?? "weekly_all"
+        let account = store.hasManyAccounts ? store.selected.title : nil
 
         VStack(alignment: .leading, spacing: 0) {
             if let error = store.state.error {
                 ErrorNotice(
                     error: error,
                     staleSince: stale ? snapshot?.fetchedAt : nil,
-                    recoveries: error.recoveries(hasSessionKey: SessionKeyStore().hasKey),
+                    recoveries: error.recoveries(hasSessionKey: SessionKeyStore(accountID: store.selectedID).hasKey),
                     now: now,
                     perform: recover
                 )
@@ -78,7 +84,7 @@ struct PopoverView: View {
 
             if let hero {
                 CopyableLimit { scheme in
-                    LimitImage.copy(snapshot: snapshot, stale: stale, now: now, colorScheme: scheme)
+                    LimitImage.copy(snapshot: snapshot, account: account, stale: stale, now: now, colorScheme: scheme)
                 } content: {
                     HeroRow(window: hero, level: level(hero), stale: stale, now: now, forecast: forecast(hero))
                 }
@@ -98,7 +104,7 @@ struct PopoverView: View {
                     SectionHeader(others.allSatisfy { $0.group == .weekly } ? tr("Weekly Limits") : tr("Limits"))
                     ForEach(others) { window in
                         CopyableLimit(bleedY: 4) { scheme in
-                            LimitImage.copy(snapshot: snapshot, stale: stale, now: now, colorScheme: scheme)
+                            LimitImage.copy(snapshot: snapshot, account: account, stale: stale, now: now, colorScheme: scheme)
                         } content: {
                             LimitRow(window: window, level: level(window), stale: stale, now: now, forecast: forecast(window))
                         }
@@ -402,6 +408,145 @@ struct PaceLegend: View {
         }
         .font(.system(size: 10))
         .foregroundStyle(Ink.tertiary(contrast))
+    }
+}
+
+// MARK: - Accounts
+
+/// One segment per account (TZ F-2), drawn in SwiftUI so it matches the menu and shows up in
+/// preview renders. ⌘1…⌘4 switch too. The menu bar follows the selection.
+struct AccountSwitcher: View {
+    @Environment(UsageStore.self) private var store
+
+    var body: some View {
+        SegmentLayout(selected: store.accounts.firstIndex { $0.id == store.selectedID } ?? 0) {
+            ForEach(Array(store.accounts.enumerated()), id: \.element.id) { index, account in
+                let isSelected = account.id == store.selectedID
+                let needsAction = store.state(of: account.id).error?.needsUserAction ?? false
+                Button { store.select(account.id) } label: {
+                    AccountSegmentLabel(title: account.title, needsAction: needsAction)
+                }
+                .buttonStyle(AccountSegmentStyle(isSelected: isSelected))
+                .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
+                .help(account.title)
+                .accessibilityLabel(needsAction ? tr("%@, needs attention", account.title) : account.title)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            }
+        }
+        .padding(2)
+        .background(Palette.track, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(tr("Accounts"))
+    }
+}
+
+private struct AccountSegmentLabel: View {
+    let title: String
+    /// The account's key expired or its login needs the user: a symbol, since the text is
+    /// only the name.
+    let needsAction: Bool
+
+    var body: some View {
+        HStack(spacing: 4) {
+            if needsAction {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Palette.warningGlyph)
+            }
+            Text(title).lineLimit(1).truncationMode(.tail)
+        }
+        .padding(.horizontal, 6)
+        .frame(maxWidth: .infinity)
+        .frame(height: 20)
+        .contentShape(Rectangle())
+    }
+}
+
+/// Each segment as wide as its name, with what's left shared equally. When the names don't
+/// fit, the selected one keeps up to `selectedCap` and the longest of the others are cut first.
+private struct SegmentLayout: Layout {
+    let selected: Int
+    var spacing: CGFloat = 2
+    var selectedCap: CGFloat = 120
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let ideal = subviews.map { $0.sizeThatFits(.unspecified) }
+        let natural = ideal.map(\.width).reduce(0, +) + gaps(subviews)
+        return CGSize(width: proposal.width ?? natural, height: ideal.map(\.height).max() ?? 0)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX
+        for (subview, width) in zip(subviews, widths(bounds.width - gaps(subviews), subviews)) {
+            subview.place(at: CGPoint(x: x, y: bounds.minY), proposal: ProposedViewSize(width: width, height: bounds.height))
+            x += width + spacing
+        }
+    }
+
+    private func gaps(_ subviews: Subviews) -> CGFloat {
+        spacing * CGFloat(max(subviews.count - 1, 0))
+    }
+
+    private func widths(_ available: CGFloat, _ subviews: Subviews) -> [CGFloat] {
+        let ideal = subviews.map { $0.sizeThatFits(.unspecified).width }
+        let total = ideal.reduce(0, +)
+        guard total > available else {
+            let extra = (available - total) / CGFloat(max(ideal.count, 1))
+            return ideal.map { $0 + extra }
+        }
+        var widths = ideal
+        var others = Array(ideal.indices)
+        var room = available
+        if ideal.indices.contains(selected) {
+            widths[selected] = min(ideal[selected], selectedCap, available)
+            room -= widths[selected]
+            others.removeAll { $0 == selected }
+        }
+        // The widest cap that fits everyone else: shorter names keep their full width.
+        var remaining = others.sorted { ideal[$0] < ideal[$1] }
+        while let first = remaining.first {
+            let share = max(room, 0) / CGFloat(remaining.count)
+            if ideal[first] <= share {
+                widths[first] = ideal[first]
+                room -= ideal[first]
+                remaining.removeFirst()
+            } else {
+                remaining.forEach { widths[$0] = share }
+                break
+            }
+        }
+        return widths
+    }
+}
+
+private struct AccountSegmentStyle: ButtonStyle {
+    let isSelected: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        AccountSegmentBody(configuration: configuration, isSelected: isSelected)
+    }
+
+    private struct AccountSegmentBody: View {
+        let configuration: ButtonStyleConfiguration
+        let isSelected: Bool
+        @StateObject private var hover = HoverState()
+
+        var body: some View {
+            let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
+            configuration.label
+                .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+                .foregroundStyle(isSelected ? Ink.primary : Ink.secondary)
+                .background {
+                    if isSelected {
+                        shape.fill(Palette.surface).overlay(shape.strokeBorder(Palette.border))
+                    } else if configuration.isPressed {
+                        shape.fill(Palette.coral.opacity(0.25))
+                    } else if hover.isOn {
+                        shape.fill(Palette.coralSoft)
+                    }
+                }
+                .onHover { hover.isOn = $0 }
+        }
     }
 }
 

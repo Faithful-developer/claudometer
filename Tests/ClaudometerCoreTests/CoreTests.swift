@@ -326,9 +326,10 @@ private func json(_ string: String) -> Data { Data(string.utf8) }
             ["uuid": "api", "capabilities": ["api"]],
             ["uuid": "chat", "capabilities": ["chat", "claude_max"]],
         ]
-        let org = ClaudeWebClient.pickOrganization(orgs)
-        #expect(org?["uuid"] as? String == "chat")
-        #expect(ClaudeWebClient.plan(from: org ?? [:]) == "max")
+        let found = ClaudeWebClient.chatOrganizations(orgs)
+        #expect(found.map(\.uuid) == ["chat"])
+        #expect(found.first?.plan == "max")
+        #expect(ClaudeWebClient.chatOrganizations([["uuid": "only", "capabilities": ["api"]]]).map(\.uuid) == ["only"])
         #expect(ClaudeWebClient.plan(from: ["capabilities": ["chat", "claude_pro"]]) == "pro")
     }
 
@@ -609,6 +610,72 @@ private func json(_ string: String) -> Data { Data(string.utf8) }
         defer { try? FileManager.default.removeItem(at: file) }
         HistoryStore(fileURL: file).save(history)
         #expect(HistoryStore(fileURL: file).load() == history)
+    }
+}
+
+@Suite struct AccountTests {
+    @Test func claudeCodeAccountKeepsItsOldNames() {
+        #expect(Account.primary.fileName("usage-state") == "usage-state.json")
+        #expect(Account.primary.fileName("usage-history") == "usage-history.json")
+        #expect(SessionKeyStore.keychainAccount(for: Account.primaryID) == "sessionKey.v2")
+        #expect(SessionKeyStore.pausedKey(for: Account.primaryID) == "sessionKeyAccessPaused")
+        #expect(NotificationID.make(account: Account.primaryID, "session|80") == "session|80")
+    }
+
+    @Test func addedAccountsGetTheirOwnNames() {
+        let account = Account(id: "abc-123", name: "Work", orgUUID: "org")
+        #expect(account.fileName("usage-state") == "usage-state.abc-123.json")
+        #expect(SessionKeyStore.keychainAccount(for: account.id) == "sessionKey.abc-123")
+        #expect(SessionKeyStore.pausedKey(for: account.id) == "sessionKeyAccessPaused.abc-123")
+        #expect(NotificationID.make(account: account.id, "outage") == "abc-123|outage")
+        #expect(Account.added(name: "Work", orgUUID: "org").id != Account.added(name: "Work", orgUUID: "org").id)
+        #expect(Account.isValidID(Account.added(name: "", orgUUID: "org").id))
+    }
+
+    @Test func listStartsWithClaudeCodeAndIsCapped() {
+        #expect(AccountStore.normalized([]) == [.primary])
+        let extras = (1...5).map { Account(id: "a\($0)", name: "A\($0)") }
+        let renamed = Account(id: Account.primaryID, name: "Personal")
+        let list = AccountStore.normalized(extras + [renamed, extras[0], Account(id: "../evil")])
+        #expect(list.map(\.id) == [Account.primaryID, "a1", "a2", "a3"])
+        #expect(list[0].name == "Personal")
+    }
+
+    @Test func titlesFallBackToDefaults() {
+        #expect(Account.primary.title == "Claude Code")
+        #expect(Account(id: "x", name: "  ").title == "Account")
+        #expect(Account(id: "x", name: " Work ").title == "Work")
+    }
+
+    @Test func roundTrip() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("claudometer-accounts-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = AccountStore(fileURL: url)
+        #expect(store.load() == [.primary])
+        let accounts = [Account.primary, Account(id: "w", name: "Work", orgUUID: "org-w")]
+        store.save(accounts)
+        #expect(store.load() == accounts)
+    }
+
+    @Test func damagedListIsReportedNotRead() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("claudometer-accounts-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = AccountStore(fileURL: url)
+        #expect(!store.isUnreadable)
+        try Data("{not json".utf8).write(to: url)
+        #expect(store.isUnreadable)
+        #expect(store.load() == [.primary])
+    }
+
+    @Test func readsClaudeCodeOrganization() {
+        let profile = ClaudeCodeProfile.parse(json(#"{"oauthAccount": {"organizationUuid": "org-1", "organizationName": "Acme", "emailAddress": "a@b.c"}}"#))
+        #expect(profile == ClaudeCodeProfile(orgUUID: "org-1"))
+        #expect(ClaudeCodeProfile.parse(json(#"{"projects": {}}"#)) == nil)
+    }
+
+    @Test func suggestsAccountNames() {
+        #expect(WebOrganization(uuid: "1", name: "ann@example.com's Organization", plan: nil).suggestedName == "ann@example.com")
+        #expect(WebOrganization(uuid: "2", name: "Acme", plan: "max").suggestedName == "Acme")
     }
 }
 

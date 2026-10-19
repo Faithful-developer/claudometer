@@ -17,7 +17,7 @@ struct SettingsView: View {
                 .tabItem { Label(tr("Notifications"), systemImage: "bell.badge") }
                 .tag(SettingsTab.notifications)
             LoginSettings()
-                .tabItem { Label(tr("Login"), systemImage: "person.badge.key") }
+                .tabItem { Label(tr("Accounts"), systemImage: "person.2") }
                 .tag(SettingsTab.login)
             AboutSettings()
                 .tabItem { Label(tr("About"), systemImage: "info.circle") }
@@ -174,7 +174,7 @@ struct GeneralSettings: View {
                     }
                 } else {
                     LabeledContent(tr("Always show")) {
-                        Text(store.state.error == .notSignedIn ? tr("Sign in on the Login tab first.") : tr("Available after the first update."))
+                        Text(store.state.error == .notSignedIn ? tr("Sign in on the Accounts tab first.") : tr("Available after the first update."))
                             .font(.callout)
                             .foregroundStyle(Ink.secondary)
                     }
@@ -297,116 +297,332 @@ struct NotificationSettings: View {
     }
 }
 
-/// Data source and the claude.ai session key backup (TZ §2.3).
+/// Accounts (TZ F-2): the Claude Code account with its claude.ai backup key (TZ §2.3), then
+/// the accounts added with a session key, then a form to add one.
 struct LoginSettings: View {
     @Environment(UsageStore.self) private var store
-    @StateObject private var model = SessionKeyModel()
 
     var body: some View {
         Form {
-            Section(tr("Data Source")) {
-                LabeledContent(tr("Using")) {
-                    Text(sourceText).foregroundStyle(Ink.secondary)
-                }
+            ClaudeCodeAccountSections(keySaved: store.isPreview ? false : nil)
+            ForEach(store.accounts.filter { !$0.isPrimary }) { account in
+                AddedAccountSection(account: account, keySaved: store.isPreview ? true : nil)
             }
-
-            Section {
-                if model.hasKey {
-                    LabeledContent(tr("Session key")) {
-                        HStack(spacing: 8) {
-                            Text(tr("Saved in Keychain")).foregroundStyle(Ink.secondary)
-                            Button(tr("Remove")) { model.remove(store: store) }
-                        }
-                    }
-                    if model.isPaused {
-                        HStack(spacing: 8) {
-                            Label {
-                                Text(tr("Keychain access was denied, so the backup is paused.")).foregroundStyle(Ink.secondary)
-                            } icon: {
-                                Image(systemName: "key.fill").foregroundStyle(Palette.warningGlyph)
-                            }
-                            Spacer(minLength: 8)
-                            Button(tr("Try Again")) { model.resume(store: store) }
-                                .help(tr("Asks for Keychain access once more."))
-                        }
-                        .font(.callout)
-                    }
-                }
-                SecureField(model.hasKey ? tr("Replace key") : tr("Session key"), text: $model.draft, prompt: Text(verbatim: "sk-ant-sid…"))
-                HStack(spacing: 8) {
-                    if model.isTesting {
-                        ProgressView().controlSize(.small)
-                        Text(tr("Checking with claude.ai…")).foregroundStyle(Ink.secondary)
-                    } else if let result = model.result {
-                        Label {
-                            Text(md(result.text)).foregroundStyle(Ink.secondary)
-                        } icon: {
-                            Image(systemName: result.ok ? "checkmark.circle.fill" : "exclamationmark.octagon.fill")
-                                .foregroundStyle(result.ok ? Palette.teal : Palette.criticalGlyph)
-                        }
-                    }
-                    Spacer(minLength: 8)
-                    Button(tr("Save & Test")) { model.save(store: store) }
-                        .disabled(model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isTesting)
-                        .keyboardShortcut(.defaultAction)
-                }
-                .font(.callout)
-            } header: {
-                Text(tr("claude.ai Backup"))
-            } footer: {
-                // Steps rather than a paragraph: for someone without Claude Code this is the way in.
-                VStack(alignment: .leading, spacing: 6) {
-                    FormNote(tr("Used only when the Claude Code login has expired, so usage stays live while Claude Code is closed."))
-                    VStack(alignment: .leading, spacing: 3) {
-                        FormNote(tr("1. Open claude.ai in your browser and sign in."))
-                        FormNote(tr("2. Open Developer Tools (⌥⌘I), then Storage (Safari) or Application (Chrome) → Cookies."))
-                        FormNote(tr("3. Copy the value of `sessionKey` and paste it above."))
-                    }
-                    Link(tr("Open claude.ai"), destination: URL(string: "https://claude.ai")!)
-                    FormNote(tr("Stored in your Keychain and sent only to claude.ai."))
-                }
-            }
+            AddAccountSection()
         }
         .formStyle(.grouped)
         .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Data source, name and the claude.ai backup of the Claude Code account.
+private struct ClaudeCodeAccountSections: View {
+    @Environment(UsageStore.self) private var store
+    @StateObject private var model: SessionKeyModel
+
+    /// Previews pass what to show instead of reading the Keychain.
+    init(keySaved: Bool?) {
+        _model = StateObject(wrappedValue: SessionKeyModel(accountID: Account.primaryID, keySaved: keySaved))
+    }
+
+    var body: some View {
+        let account = store.accounts.first(where: \.isPrimary) ?? .primary
+        Section(store.hasManyAccounts ? account.title : tr("Data Source")) {
+            if store.hasManyAccounts {
+                AccountNameField(account: account)
+            }
+            LabeledContent(tr("Using")) {
+                Text(sourceText).foregroundStyle(Ink.secondary)
+            }
+        }
+
+        Section {
+            if model.hasKey {
+                LabeledContent(tr("Session key")) {
+                    HStack(spacing: 8) {
+                        Text(tr("Saved in Keychain")).foregroundStyle(Ink.secondary)
+                        Button(tr("Remove")) { model.remove(store: store) }
+                    }
+                }
+                if model.isPaused {
+                    PausedKeyRow(text: tr("Keychain access was denied, so the backup is paused.")) { model.resume(store: store) }
+                }
+            }
+            SecureField(model.hasKey ? tr("Replace key") : tr("Session key"), text: $model.draft, prompt: Text(verbatim: "sk-ant-sid…"))
+                .onSubmit { model.save(store: store) }
+            KeyTestRow(isTesting: model.isTesting, result: model.result, action: tr("Save & Test"), disabled: model.draft.isBlank) {
+                model.save(store: store)
+            }
+        } header: {
+            Text(tr("claude.ai Backup"))
+        } footer: {
+            // Steps rather than a paragraph: for someone without Claude Code this is the way in.
+            VStack(alignment: .leading, spacing: 6) {
+                FormNote(tr("Used only when the Claude Code login has expired, so usage stays live while Claude Code is closed."))
+                VStack(alignment: .leading, spacing: 3) {
+                    FormNote(tr("1. Open claude.ai in your browser and sign in."))
+                    FormNote(tr("2. Open Developer Tools (⌥⌘I), then Storage (Safari) or Application (Chrome) → Cookies."))
+                    FormNote(tr("3. Copy the value of `sessionKey` and paste it above."))
+                }
+                Link(tr("Open claude.ai"), destination: URL(string: "https://claude.ai")!)
+                FormNote(tr("Stored in your Keychain and sent only to claude.ai."))
+            }
+        }
         // A fetch in the background may have just paused the backup.
-        .onChange(of: store.state) { model.reload() }
+        .onChange(of: store.state(of: Account.primaryID)) { model.reload() }
     }
 
     private var sourceText: String {
-        guard let snapshot = store.state.snapshot else { return tr("Not connected") }
+        let state = store.state(of: Account.primaryID)
+        guard let snapshot = state.snapshot else { return tr("Not connected") }
         let title = snapshot.source?.title ?? UsageSource.claudeCode.title
-        return store.state.error == nil ? title : tr("%@ (last known)", title)
+        return state.error == nil ? title : tr("%@ (last known)", title)
+    }
+}
+
+/// An account added with a session key: its name, how it's doing, a new key and removal.
+private struct AddedAccountSection: View {
+    let account: Account
+    @Environment(UsageStore.self) private var store
+    @StateObject private var model: SessionKeyModel
+
+    init(account: Account, keySaved: Bool?) {
+        self.account = account
+        _model = StateObject(wrappedValue: SessionKeyModel(accountID: account.id, keySaved: keySaved))
+    }
+
+    var body: some View {
+        let state = store.state(of: account.id)
+        Section(account.title) {
+            AccountNameField(account: account)
+            LabeledContent(tr("Status")) {
+                if state.error?.needsUserAction == true {
+                    Label {
+                        Text(Self.status(state)).foregroundStyle(Ink.secondary)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Palette.warningGlyph)
+                    }
+                } else {
+                    Text(Self.status(state)).foregroundStyle(Ink.secondary)
+                }
+            }
+            if model.isPaused {
+                PausedKeyRow(text: tr("Keychain access was denied, so this account is paused.")) { model.resume(store: store) }
+            }
+            if model.isReplacing || !model.hasKey || state.error == .sessionKeyInvalid {
+                SecureField(tr("New key"), text: $model.draft, prompt: Text(verbatim: "sk-ant-sid…"))
+                    .onSubmit { model.save(store: store) }
+                KeyTestRow(isTesting: model.isTesting, result: model.result, action: tr("Save & Test"), disabled: model.draft.isBlank) {
+                    model.save(store: store)
+                }
+            } else if let result = model.result {
+                KeyTestRow(isTesting: false, result: result, action: nil, disabled: true) {}
+            }
+            HStack(spacing: 8) {
+                Spacer()
+                if model.hasKey, !model.isReplacing, state.error != .sessionKeyInvalid {
+                    Button(tr("Replace Key…")) { model.isReplacing = true }
+                }
+                Button(tr("Remove Account…"), role: .destructive) { model.confirmRemove = true }
+                    .disabled(model.isTesting)
+            }
+            .confirmationDialog(tr("Remove “%@”?", account.title), isPresented: $model.confirmRemove) {
+                Button(tr("Remove Account"), role: .destructive) { store.removeAccount(account.id) }
+            } message: {
+                Text(tr("Its session key is deleted from your Keychain, and its usage history from this Mac."))
+            }
+        }
+        .onChange(of: state) { model.reload() }
+    }
+
+    /// "Max plan · Session 42%", or what's wrong.
+    static func status(_ state: UsageState) -> String {
+        if let error = state.error {
+            return state.snapshot == nil ? error.shortReason : tr("%@ (last known)", error.shortReason)
+        }
+        guard let snapshot = state.snapshot else { return tr("Connecting…") }
+        return [Formatters.planName(snapshot.plan).map { tr("%@ plan", $0) },
+                snapshot.session.map { tr("Session %@", Formatters.percent($0.utilization)) }]
+            .compactMap { $0 }.joined(separator: " · ")
+    }
+}
+
+/// Paste a key for another account; picks the organization when the login has several.
+private struct AddAccountSection: View {
+    @Environment(UsageStore.self) private var store
+    @StateObject private var model = AddAccountModel()
+
+    var body: some View {
+        Section {
+            if store.accountsLocked {
+                Text(UsageStore.lockedMessage).foregroundStyle(Ink.secondary)
+            } else if store.canAddAccount {
+                TextField(tr("Name"), text: $model.name, prompt: Text(tr("Work")))
+                SecureField(tr("Session key"), text: $model.draft, prompt: Text(verbatim: "sk-ant-sid…"))
+                    .onSubmit { model.add(store: store) }
+                if model.organizations.count > 1 {
+                    Picker(tr("Organization"), selection: $model.orgUUID) {
+                        ForEach(model.organizations) { org in
+                            Text(org.name.isEmpty ? org.uuid : org.name).tag(Optional(org.uuid))
+                        }
+                    }
+                }
+                KeyTestRow(isTesting: model.isTesting, result: model.result, action: tr("Add Account"), disabled: model.draft.isBlank) {
+                    model.add(store: store)
+                }
+            } else {
+                // The account that just reached the limit keeps its "Works" line.
+                if model.isTesting || model.result != nil {
+                    KeyTestRow(isTesting: model.isTesting, result: model.result, action: nil, disabled: true) {}
+                }
+                Text(tr("You can add up to %lld accounts.", AccountStore.maxExtra)).foregroundStyle(Ink.secondary)
+            }
+        } header: {
+            Text(tr("Add Account"))
+        } footer: {
+            FormNote(tr("Track another Claude account, such as a work Team plan, with the session key of a browser signed in to it. The steps are the same as above."))
+        }
+    }
+}
+
+/// Edits an account's name; saved on Return or when the field loses focus.
+private struct AccountNameField: View {
+    let account: Account
+    @Environment(UsageStore.self) private var store
+    @StateObject private var draft: TextDraft
+    @FocusState private var focused: Bool
+
+    init(account: Account) {
+        self.account = account
+        _draft = StateObject(wrappedValue: TextDraft(account.name))
+    }
+
+    var body: some View {
+        TextField(tr("Name"), text: $draft.text, prompt: Text(Account(id: account.id).title))
+            .focused($focused)
+            .disabled(store.accountsLocked)
+            .onSubmit(commit)
+            .onChange(of: focused) { if !focused { commit() } }
+    }
+
+    private func commit() {
+        if draft.text != account.name { store.rename(account.id, to: draft.text) }
+    }
+}
+
+/// `@State` needs the SwiftUI macro plugin, which the Command Line Tools lack.
+final class TextDraft: ObservableObject {
+    @Published var text: String
+    init(_ text: String) { self.text = text }
+}
+
+/// A paused key (denied Keychain prompt) with Try Again.
+private struct PausedKeyRow: View {
+    let text: String
+    let resume: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Label {
+                Text(text).foregroundStyle(Ink.secondary)
+            } icon: {
+                Image(systemName: "key.fill").foregroundStyle(Palette.warningGlyph)
+            }
+            Spacer(minLength: 8)
+            Button(tr("Try Again"), action: resume)
+                .help(tr("Asks for Keychain access once more."))
+        }
+        .font(.callout)
+    }
+}
+
+/// The outcome of checking a key with claude.ai, and the button that does it.
+struct KeyResult: Equatable {
+    enum Tone { case ok, failed, info }
+    var tone: Tone
+    var text: String
+}
+
+private struct KeyTestRow: View {
+    let isTesting: Bool
+    let result: KeyResult?
+    /// Button title; nil shows only the result.
+    let action: String?
+    let disabled: Bool
+    let perform: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if isTesting {
+                ProgressView().controlSize(.small)
+                Text(tr("Checking with claude.ai…")).foregroundStyle(Ink.secondary)
+            } else if let result {
+                Label {
+                    Text(md(result.text)).foregroundStyle(Ink.secondary).fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    switch result.tone {
+                    case .ok: Image(systemName: "checkmark.circle.fill").foregroundStyle(Palette.teal)
+                    case .failed: Image(systemName: "exclamationmark.octagon.fill").foregroundStyle(Palette.criticalGlyph)
+                    case .info: Image(systemName: "info.circle.fill").foregroundStyle(Ink.secondary)
+                    }
+                }
+            }
+            Spacer(minLength: 8)
+            if let action {
+                Button(action, action: perform).disabled(disabled || isTesting)
+            }
+        }
+        .font(.callout)
     }
 }
 
 @MainActor
 final class SessionKeyModel: ObservableObject {
+    let accountID: String
     @Published var draft = ""
-    @Published private(set) var hasKey = SessionKeyStore().hasKey
-    @Published private(set) var isPaused = SessionKeyStore().isPaused
+    @Published private(set) var hasKey: Bool
+    @Published private(set) var isPaused: Bool
     @Published private(set) var isTesting = false
-    @Published private(set) var result: (ok: Bool, text: String)?
+    @Published private(set) var result: KeyResult?
+    /// Added accounts show the key field only on request.
+    @Published var isReplacing = false
+    @Published var confirmRemove = false
+    /// Set for previews, which don't read the Keychain.
+    private let keySaved: Bool?
+
+    init(accountID: String, keySaved: Bool? = nil) {
+        self.accountID = accountID
+        self.keySaved = keySaved
+        let keys = SessionKeyStore(accountID: accountID)
+        hasKey = keySaved ?? keys.hasKey
+        isPaused = keySaved == nil ? keys.isPaused : false
+    }
 
     func save(store: UsageStore) {
         let key = SessionKeyStore.normalize(draft)
-        guard !key.isEmpty else { return }
+        guard !key.isEmpty, !isTesting else { return }
         isTesting = true
         result = nil
         Task {
             defer { isTesting = false }
             do {
-                let snapshot = try await store.saveSessionKey(key)
+                let snapshot = try await store.replaceKey(key, for: accountID)
                 draft = ""
                 hasKey = true
                 isPaused = false
-                let session = snapshot.session.map { tr(" · Session %@", Formatters.percent($0.utilization)) } ?? ""
-                let plan = Formatters.planName(snapshot.plan).map { " · " + tr("%@ plan", $0) } ?? ""
-                result = (true, tr("Works") + plan + session)
+                isReplacing = false
+                result = KeyResult(tone: .ok, text: Self.works(snapshot))
             } catch {
-                result = (false, Self.message(for: error))
+                result = KeyResult(tone: .failed, text: Self.message(for: error))
             }
         }
+    }
+
+    /// "Works · Max plan · Session 42%".
+    static func works(_ snapshot: UsageSnapshot) -> String {
+        let session = snapshot.session.map { tr(" · Session %@", Formatters.percent($0.utilization)) } ?? ""
+        let plan = Formatters.planName(snapshot.plan).map { " · " + tr("%@ plan", $0) } ?? ""
+        return tr("Works") + plan + session
     }
 
     /// Wording for a key that was just pasted, rather than the background-poll messages.
@@ -427,15 +643,84 @@ final class SessionKeyModel: ObservableObject {
     }
 
     func resume(store: UsageStore) {
-        store.resumeSessionKey()
+        store.resumeSessionKey(for: accountID)
         isPaused = false
     }
 
     func reload() {
-        let keys = SessionKeyStore()
+        guard keySaved == nil else { return }
+        let keys = SessionKeyStore(accountID: accountID)
         hasKey = keys.hasKey
         isPaused = keys.isPaused
     }
+}
+
+@MainActor
+final class AddAccountModel: ObservableObject {
+    @Published var name = ""
+    /// A different key drops the previous key's organizations.
+    @Published var draft = "" {
+        didSet { if draft != oldValue, !organizations.isEmpty { organizations = []; orgUUID = nil } }
+    }
+    /// Shown as a picker when the key's login has several organizations not added yet.
+    @Published private(set) var organizations: [WebOrganization] = []
+    @Published var orgUUID: String?
+    @Published private(set) var isTesting = false
+    @Published private(set) var result: KeyResult?
+
+    func add(store: UsageStore) {
+        let key = SessionKeyStore.normalize(draft)
+        guard !key.isEmpty, !isTesting else { return }
+        isTesting = true
+        result = nil
+        Task {
+            defer { isTesting = false }
+            do {
+                let check = try await store.check(sessionKey: key)
+                let available = check.available
+                guard let org = pick(from: available) else {
+                    if available.count > 1 {
+                        organizations = available
+                        orgUUID = available[0].uuid
+                        result = KeyResult(tone: .info, text: tr("This login has several organizations. Pick one, then click Add Account."))
+                    } else if check.isClaudeCode {
+                        // The same account as Claude Code's: it backs that one up instead (TZ §2.3).
+                        _ = try await store.saveSessionKey(key)
+                        reset()
+                        result = KeyResult(tone: .ok, text: tr("This is your Claude Code account, so the key was saved as its backup."))
+                    } else if let existing = check.added.first {
+                        result = KeyResult(tone: .failed, text: tr("Already added as “%@”.", existing.title))
+                    } else {
+                        result = KeyResult(tone: .failed, text: AppError.apiChanged.message)
+                    }
+                    return
+                }
+                let snapshot = try await store.addAccount(key: key, org: org, name: name)
+                reset()
+                result = KeyResult(tone: .ok, text: SessionKeyModel.works(snapshot))
+            } catch {
+                result = KeyResult(tone: .failed, text: SessionKeyModel.message(for: error))
+            }
+        }
+    }
+
+    /// The only organization left, or the one picked once the picker is showing.
+    private func pick(from available: [WebOrganization]) -> WebOrganization? {
+        if available.count == 1 { return available[0] }
+        guard organizations == available else { return nil }
+        return available.first { $0.uuid == orgUUID }
+    }
+
+    private func reset() {
+        name = ""
+        draft = ""
+        organizations = []
+        orgUUID = nil
+    }
+}
+
+private extension String {
+    var isBlank: Bool { trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 }
 
 struct AboutSettings: View {

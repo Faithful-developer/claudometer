@@ -99,7 +99,7 @@ public struct UsageHistory: Codable, Equatable, Sendable {
     }
 }
 
-/// `usage-history.json` next to the usage state, readable by the widget.
+/// `usage-history.json` (one per account) next to the usage state, readable by the widget.
 public struct HistoryStore: Sendable {
     public let fileURL: URL
 
@@ -107,8 +107,12 @@ public struct HistoryStore: Sendable {
         self.fileURL = fileURL
     }
 
-    public static func `default`() -> HistoryStore {
-        HistoryStore(fileURL: SnapshotStore.sharedDirectory.appendingPathComponent("usage-history.json"))
+    public static func `default`(account: Account = .primary) -> HistoryStore {
+        HistoryStore(fileURL: SnapshotStore.sharedDirectory.appendingPathComponent(account.fileName("usage-history")))
+    }
+
+    public func delete() {
+        try? FileManager.default.removeItem(at: fileURL)
     }
 
     public func load() -> UsageHistory {

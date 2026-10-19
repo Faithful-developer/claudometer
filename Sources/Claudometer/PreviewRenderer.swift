@@ -13,7 +13,7 @@ enum PreviewRenderer {
         let dir = URL(fileURLWithPath: args.count > index + 1 ? args[index + 1] : "previews", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
-        // `--sample high|rings|pinned|stale|expired|signedout` renders made-up states for design review.
+        // `--sample high|rings|pinned|stale|expired|signedout|accounts` renders made-up states for design review.
         let sample = args.firstIndex(of: "--sample").flatMap { args.count > $0 + 1 ? args[$0 + 1] : nil }
         // `--language ru` renders in that language, from the repo's strings.
         let language = args.firstIndex(of: "--language").flatMap { args.count > $0 + 1 ? args[$0 + 1] : nil }
@@ -34,9 +34,22 @@ enum PreviewRenderer {
         case "stale": initial = UsageState(snapshot: highSample.snapshot, error: .offline)
         case "expired": initial = UsageState(snapshot: highSample.snapshot, error: .tokenExpired)
         case "signedout": initial = UsageState(error: .notSignedIn)
+        case "accounts": initial = highSample
         default: initial = nil
         }
-        let store = UsageStore(markCachedStale: false, initialState: initial, initialHistory: sampleHistory(initial))
+        let seeds: [UsageStore.Seed]
+        if sample == "accounts" {
+            seeds = accountsSample
+        } else if let initial {
+            seeds = [.init(account: .primary, state: initial, history: sampleHistory(initial))]
+        } else {
+            // The real accounts and their last known data, as saved.
+            seeds = AccountStore.default().load().map { account in
+                .init(account: account, state: SnapshotStore.default(account: account).load() ?? UsageState(),
+                      history: HistoryStore.default(account: account).load())
+            }
+        }
+        let store = UsageStore(seeds: seeds)
         for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
             NSAppearance(named: appearance)?.performAsCurrentDrawingAppearance {
                 let settings = AppSettings.current
@@ -69,7 +82,7 @@ enum PreviewRenderer {
 
             // The clipboard card from clicking a limit in the popover.
             if let snapshot = store.state.snapshot,
-               let image = LimitImage.image(snapshot: snapshot, stale: store.state.isStale, now: Date(), colorScheme: name == "dark" ? .dark : .light) {
+               let image = LimitImage.image(snapshot: snapshot, account: store.hasManyAccounts ? store.selected.title : nil, stale: store.state.isStale, now: Date(), colorScheme: name == "dark" ? .dark : .light) {
                 write(image, scale: LimitImage.scale, to: dir.appendingPathComponent("copy-\(name)\(suffix(sample, language)).png"))
             }
 
@@ -98,7 +111,8 @@ enum PreviewRenderer {
                 let hero = store.state.snapshot?.window(for: style.metric)
                 let forecast = size == .large && store.state.error == nil
                     ? hero.flatMap { store.history.forecast(for: $0, at: store.state.snapshot!.fetchedAt) } : nil
-                let widget = UsageWidgetContent(size: size, state: store.state, now: Date(), style: style, forecast: forecast, refreshControl: AnyView(RefreshGlyph()))
+                let widget = UsageWidgetContent(size: size, state: store.state, now: Date(), style: style, forecast: forecast, refreshControl: AnyView(RefreshGlyph()),
+                                                account: store.hasManyAccounts ? store.selected.title : nil)
                     .padding(16)
                     .frame(width: size.size.width, height: size.size.height)
                     .background(Palette.surface)
@@ -235,6 +249,23 @@ enum PreviewRenderer {
             plan: "max",
             fetchedAt: now.addingTimeInterval(-60)
         ))
+    }
+
+    /// The most accounts there can be: Claude Code (selected), a work account running high,
+    /// one whose key has expired and one with a long name.
+    private static var accountsSample: [UsageStore.Seed] {
+        let work = Account(id: "sample-work", name: "Work", orgUUID: "org-work")
+        let side = Account(id: "sample-side", name: "Side project", orgUUID: "org-side")
+        let client = Account(id: "sample-client", name: "Client team account", orgUUID: "org-client")
+        let workState = UsageState(snapshot: ringsSample.snapshot?.withSource(.claudeWeb))
+        let sideState = UsageState(snapshot: pinnedSample.snapshot?.withSource(.claudeWeb), error: .sessionKeyInvalid)
+        let clientState = UsageState(snapshot: pinnedSample.snapshot?.withSource(.claudeWeb))
+        return [
+            .init(account: .primary, state: highSample, history: sampleHistory(highSample)),
+            .init(account: work, state: workState, history: sampleHistory(workState)),
+            .init(account: side, state: sideState, history: UsageHistory()),
+            .init(account: client, state: clientState, history: sampleHistory(clientState)),
+        ]
     }
 
     private static func write(_ image: NSImage, scale: CGFloat, to url: URL) {

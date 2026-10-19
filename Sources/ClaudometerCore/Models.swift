@@ -342,7 +342,7 @@ public enum AppError: Error, Codable, Hashable, Sendable {
 /// A way out of an error state, shown as a button.
 public enum ErrorRecovery: Hashable, Sendable {
     case tryAgain
-    /// Opens Settings › Login to paste a claude.ai session key.
+    /// Opens Settings › Accounts to paste a claude.ai session key.
     case addSessionKey
     case updateSessionKey
 

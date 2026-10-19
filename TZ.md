@@ -30,7 +30,6 @@ A developer or power user on macOS who:
 ### 1.4 Non-goals (v1)
 - Anthropic API (Console) billing or token spend.
 - Token or cost counting from local Claude Code logs.
-- Multiple accounts.
 - Windows and Linux.
 - App Store distribution (see §4.6).
 
@@ -78,7 +77,7 @@ User-Agent: Claudometer/<version>
 - `subscriptionType`, if present, is shown in the popover footer, for example "Max".
 
 ### 2.3 Fallback: claude.ai session key (implemented 2026-10-07)
-A claude.ai session cookie (`sessionKey`), entered manually in Settings → Login and stored in Claudometer's own Keychain item (`dev.claudometer.claude-ai-session`):
+A claude.ai session cookie (`sessionKey`), entered manually in Settings → Accounts and stored in Claudometer's own Keychain item (`dev.claudometer.claude-ai-session`):
 `GET https://claude.ai/api/organizations` → `GET https://claude.ai/api/organizations/{uuid}/usage`. The response shape is the same as §2.1.
 - Used only when Claude Code's login is missing, expired or unreadable (E-1…E-3). Claude Code's token always comes first.
 - "Save & Test" checks the key against claude.ai and stores it only if it works.
@@ -86,12 +85,19 @@ A claude.ai session cookie (`sessionKey`), entered manually in Settings → Logi
 - The key is never written to disk, logs or the widget's folder. The snapshot records only which source was used.
 - While every source fails, windows whose reset time has passed read 0% (weekly windows roll forward a week; a session window has no reset until it is used again). An expired Claude Code token is re-checked every minute.
 
-### 2.4 Risks
+### 2.4 Accounts (F-2, implemented in 0.3.0)
+- The Claude Code login is always the first account. Up to three more are added in Settings → Accounts, each with its own claude.ai session key (Keychain item `sessionKey.<account id>` under the §2.3 service) and organization.
+- `accounts.json` in the shared folder lists them: id, name and organization only, never a key. The widget reads it for Edit Widget. If the file exists but can't be read, it is left untouched and Settings offers no Add Account or renaming until it can.
+- Each account has its own state and history files. The Claude Code account keeps the original names (`usage-state.json`, `usage-history.json`); added accounts use `usage-state.<id>.json` and `usage-history.<id>.json`. Removing an account deletes its key, its files and its alert state.
+- A pasted key whose organization matches Claude Code's (`oauthAccount.organizationUuid` in `~/.claude.json`) is saved as the Claude Code account's backup (§2.3) instead of a duplicate. A login with several organizations not yet added shows a picker. At launch the backup follows Claude Code's organization only if the key can read it, and the Claude Code account starts polling once that is settled.
+- Each account polls on its own (backoff, Retry-After and reset timing as FR-15…FR-17). The popover has a switcher (⌘1…⌘4); the menu bar shows the selected account. Each widget picks its account in Edit Widget; widgets without a choice show the Claude Code account. Alerts cover every account and, with more than one, put its name in the title. Being offline gives one alert without a name rather than one per account.
+
+### 2.5 Risks
 - **R-1:** Both endpoints are **undocumented** and may change or disappear. Mitigations: tolerant decoding, a clear "API changed" error state, and isolating all network code in `UsageAPIClient`.
 - **R-2:** The first time the app reads the Keychain, macOS shows an "allow access" prompt. The user must choose **Always Allow**. This must be explained during onboarding.
 - **R-3:** Polling too often may trigger rate limiting (HTTP 429). The minimum interval is 1 min, the default is 5 min, and the app backs off on errors.
 
-### 2.5 Data model (`Shared` module)
+### 2.6 Data model (`Shared` module)
 
 ```swift
 enum LimitKind: Hashable, Codable {
@@ -414,6 +420,8 @@ Stale data (E-3 to E-6) is still displayed but greyed out, with a "Showing data 
   M5 is done apart from Developer ID signing and notarization (deferred, see above).
 - **0.2.0 (2026-10-11):** Russian localization (NFR-6), FR-29/FR-30 notifications, recovery buttons in the popover and widget, step-by-step session key help, designed DMG window (`scripts/make-dmg.sh`).
 - **0.2.1 (2026-10-11):** in-app **Install Update**, usage history and forecast (F-3, F-4), Homebrew tap and `scripts/install.sh` (F-6).
+- **0.2.2 (2026-10-12):** daily anonymous check-in counter (random ID, version, language, macOS version only).
+- **0.3.0 (2026-10-19):** multiple accounts (F-2, §2.4).
 
 ---
 
@@ -436,8 +444,8 @@ Stale data (E-3 to E-6) is still displayed but greyed out, with a "Showing data 
 
 - **Q-1:** Do the exact response fields (`seven_day_sonnet`, extra-usage or "overage" fields) differ between Pro and Max? This is answered in M1.
 - **Q-2:** Should the app ask Claude Code to refresh an expired token? **Answered:** no. Tested on 2026-10-11: `claude auth status` doesn't renew an expired token, and `claude -p` would spend usage. The claude.ai session key (§2.3) covers this case.
-- **F-1:** ~~The claude.ai cookie fallback (§2.3) for users who don't use Claude Code.~~ Done: the session key in Settings › Login.
-- **F-2:** Multiple accounts or organisations.
+- **F-1:** ~~The claude.ai cookie fallback (§2.3) for users who don't use Claude Code.~~ Done: the session key in Settings › Accounts.
+- **F-2:** ~~Multiple accounts or organisations.~~ Done in 0.3.0 (§2.4).
 - **F-3:** ~~A local usage history: store snapshots and show a 7-day chart in the popover.~~ Done in 0.2.1.
 - **F-4:** ~~Show the "burn rate" and the projected time to the limit at the current pace.~~ Done in 0.2.1: shown only when the limit would be hit before it resets.
 - **F-5:** A Raycast extension, an Übersicht widget, or an iOS companion that reads the same data.

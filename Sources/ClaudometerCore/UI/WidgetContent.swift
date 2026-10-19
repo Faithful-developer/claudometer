@@ -50,9 +50,13 @@ public struct UsageWidgetContent: View {
     /// When the hero limit runs out at the current pace (large widget only).
     let forecast: Date?
     let refreshControl: AnyView?
+    /// The account shown, named when there's more than one (TZ F-2).
+    let account: String?
 
-    public init(size: WidgetSize, state: UsageState, now: Date, style: WidgetStyle, forecast: Date? = nil, refreshControl: AnyView? = nil) {
+    public init(size: WidgetSize, state: UsageState, now: Date, style: WidgetStyle, forecast: Date? = nil,
+                refreshControl: AnyView? = nil, account: String? = nil) {
         self.forecast = forecast
+        self.account = account
         self.size = size
         self.state = state
         self.now = now
@@ -77,6 +81,9 @@ public struct UsageWidgetContent: View {
             VStack(spacing: 6) {
                 Image(systemName: "gauge.with.dots.needle.33percent")
                     .font(.title2).foregroundStyle(Ink.secondary)
+                if let account {
+                    Text(account).font(.system(size: 11)).foregroundStyle(Ink.secondary).lineLimit(1)
+                }
                 Text(state.error?.shortReason ?? tr("Open Claudometer to start"))
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Ink.primary)
@@ -136,6 +143,18 @@ public struct UsageWidgetContent: View {
         .overlay(alignment: .topTrailing) {
             refreshControl.offset(x: 6, y: -6)
         }
+        // The account in the other corner, short enough to clear the ring.
+        .overlay(alignment: .topLeading) {
+            if let account {
+                Text(account)
+                    .font(.system(size: 10))
+                    .foregroundStyle(Ink.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: 52, alignment: .leading)
+                    .offset(x: -4, y: -6)
+            }
+        }
     }
 
     // MARK: Medium: ring + the other limits
@@ -184,7 +203,8 @@ public struct UsageWidgetContent: View {
         let level = style.level(hero)
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                Text(verbatim: "Claudometer").font(.system(size: 13, weight: .bold)).foregroundStyle(Ink.primary)
+                // With several accounts the title names the one shown.
+                Text(account ?? "Claudometer").font(.system(size: 13, weight: .bold)).foregroundStyle(Ink.primary).lineLimit(1)
                 Spacer()
                 if let plan = Formatters.planName(snapshot.plan) {
                     Text(tr("%@ plan", plan)).font(.system(size: 11)).foregroundStyle(Ink.secondary)
@@ -265,6 +285,9 @@ public struct UsageWidgetContent: View {
     /// "Updated 14:05", or a clear "Out of date · 14:05" marker when the data is stale.
     private func footer(_ snapshot: UsageSnapshot) -> some View {
         HStack(spacing: 4) {
+            if let account, size == .medium {
+                Text(verbatim: "\(account) ·").foregroundStyle(Ink.secondary).layoutPriority(-1)
+            }
             Group {
                 if isStale {
                     Image(systemName: "exclamationmark.arrow.circlepath").foregroundStyle(Palette.warningGlyph)

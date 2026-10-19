@@ -17,6 +17,7 @@ Source of truth for colours: `docs/palette.html`. Tokens are in `Sources/Claudom
 | Soft tints | `*Soft` | palette tints | dark steps | Status pill backgrounds |
 | Canvas | `Palette.canvas` | #F7F6F3 | #1E1D23 | Popover wash over the menu material |
 | Surface | `Palette.surface` | #FFFFFF | #26252C | Widget cards |
+| Border | `Palette.border` | #E8E6E2 | #36353C | Outline of small buttons and the selected account segment |
 | Track | `Palette.track` | #F0EEEB | #34333A | Unfilled linear meter track |
 | Ring track | `Palette.ringTrack` | #D9D6D0 | #55545C | Unfilled ring track (the only thing drawing the circle, so stronger). Accented/vibrant widgets use `Ink.trackVibrant` |
 | Text | `Ink.primary/secondary/tertiary` | #20202B / #5A5A66 / #6E6E79 | #F1EFEA / #AEAEB8 / #8D8D97 | All text (every step ≥4.5:1 on canvas and surface) |
@@ -38,3 +39,4 @@ Rules:
 - Meters are 6pt capsules (widgets 5pt) with a 2pt pace tick in secondary ink, outlined by a 1pt halo of the background colour. Rings use a 7–10pt round-cap stroke.
 - Menu-style rows are 24pt tall, with a 6pt continuous corner radius on hover.
 - Status pills: capsule, 8×3 padding, 11pt semibold.
+- Account switcher (2+ accounts): a 24pt track (`Palette.track`, 8pt radius, 2pt inset) of equal segments, 12pt text; the selected one is `Palette.surface` with a `Palette.border` outline and semibold text and keeps its full name first.

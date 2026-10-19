@@ -23,8 +23,8 @@ public struct SnapshotStore: Sendable {
             .appendingPathComponent("Library/Application Support/Claudometer", isDirectory: true)
     }
 
-    public static func `default`() -> SnapshotStore {
-        SnapshotStore(fileURL: sharedDirectory.appendingPathComponent("usage-state.json"))
+    public static func `default`(account: Account = .primary) -> SnapshotStore {
+        SnapshotStore(fileURL: sharedDirectory.appendingPathComponent(account.fileName("usage-state")))
     }
 
     // MARK: Widget style (menu bar metric + thresholds), written by the app
@@ -46,6 +46,11 @@ public struct SnapshotStore: Sendable {
     public func load() -> UsageState? {
         guard let data = try? Data(contentsOf: fileURL) else { return nil }
         return try? Self.decoder.decode(UsageState.self, from: data)
+    }
+
+    /// Removes the file, for an account that was removed.
+    public func delete() {
+        try? FileManager.default.removeItem(at: fileURL)
     }
 
     public func save(_ state: UsageState) throws {

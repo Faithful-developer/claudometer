@@ -9,41 +9,64 @@ public actor ClaudeWebClient {
     public static let base = URL(string: "https://claude.ai/api/")!
 
     private let session: URLSession
-    /// Organization of the last key used, so each poll is one request instead of two.
-    private var cachedOrg: (key: String, uuid: String, plan: String?)?
+    /// Organizations of each key used, so each poll is one request instead of two.
+    private var cachedOrgs: [String: [WebOrganization]] = [:]
 
     public init(session: URLSession = .shared) {
         self.session = session
     }
 
-    public func fetchUsage(sessionKey: String) async throws -> UsageSnapshot {
-        let org = try await organization(sessionKey: sessionKey)
+    /// Usage of `orgUUID`, or of the personal chat organization when it's nil (the Claude
+    /// Code account's backup key).
+    /// `cache` false for a key that's only being checked, so a rejected key isn't kept.
+    public func fetchUsage(sessionKey: String, orgUUID: String? = nil, cache: Bool = true) async throws -> UsageSnapshot {
+        defer { if !cache { cachedOrgs[sessionKey] = nil } }
+        let org = try await organization(sessionKey: sessionKey, uuid: orgUUID)
         do {
             let data = try await get("organizations/\(org.uuid)/usage", sessionKey: sessionKey)
             return try UsageDecoder.decode(data).withPlan(org.plan).withSource(.claudeWeb)
         } catch AppError.apiChanged {
             // The organization may have changed (e.g. switched account); look it up again next time.
-            cachedOrg = nil
+            cachedOrgs[sessionKey] = nil
             throw AppError.apiChanged
         }
     }
 
-    private func organization(sessionKey: String) async throws -> (uuid: String, plan: String?) {
-        if let cachedOrg, cachedOrg.key == sessionKey { return (cachedOrg.uuid, cachedOrg.plan) }
+    /// The organizations with usage limits that `sessionKey` can read, personal first.
+    public func organizations(sessionKey: String, cache: Bool = true) async throws -> [WebOrganization] {
+        defer { if !cache { cachedOrgs[sessionKey] = nil } }
+        if let cached = cachedOrgs[sessionKey] { return cached }
         let data = try await get("organizations", sessionKey: sessionKey)
-        guard let orgs = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
-              let org = Self.pickOrganization(orgs),
-              let uuid = org["uuid"] as? String else {
+        guard let orgs = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
             throw AppError.apiChanged
         }
-        let plan = Self.plan(from: org)
-        cachedOrg = (sessionKey, uuid, plan)
-        return (uuid, plan)
+        let found = Self.chatOrganizations(orgs)
+        guard !found.isEmpty else { throw AppError.apiChanged }
+        cachedOrgs[sessionKey] = found
+        return found
     }
 
-    /// The personal chat organization if there are several (API-only orgs have no usage limits).
-    static func pickOrganization(_ orgs: [[String: Any]]) -> [String: Any]? {
-        orgs.first { (($0["capabilities"] as? [String]) ?? []).contains("chat") } ?? orgs.first
+    private func organization(sessionKey: String, uuid: String?) async throws -> WebOrganization {
+        guard let uuid else {
+            guard let first = try await organizations(sessionKey: sessionKey).first else { throw AppError.apiChanged }
+            return first
+        }
+        if let org = try await organizations(sessionKey: sessionKey).first(where: { $0.uuid == uuid }) { return org }
+        // Joined or left since the list was cached: look once more before giving up.
+        cachedOrgs[sessionKey] = nil
+        if let org = try await organizations(sessionKey: sessionKey).first(where: { $0.uuid == uuid }) { return org }
+        // The key now belongs to a login without this organization.
+        throw AppError.sessionKeyInvalid
+    }
+
+    /// Organizations with chat, in the server's order (personal first); API-only ones have no
+    /// usage limits. Every organization if none says so.
+    static func chatOrganizations(_ orgs: [[String: Any]]) -> [WebOrganization] {
+        let chat = orgs.filter { (($0["capabilities"] as? [String]) ?? []).contains("chat") }
+        return (chat.isEmpty ? orgs : chat).compactMap { org in
+            guard let uuid = org["uuid"] as? String, !uuid.isEmpty else { return nil }
+            return WebOrganization(uuid: uuid, name: org["name"] as? String ?? "", plan: plan(from: org))
+        }
     }
 
     static func plan(from org: [String: Any]) -> String? {
@@ -93,5 +116,28 @@ public actor ClaudeWebClient {
         if response.value(forHTTPHeaderField: "cf-mitigated") != nil { return true }
         let type = response.value(forHTTPHeaderField: "Content-Type") ?? ""
         return type.contains("text/html")
+    }
+}
+
+/// A claude.ai organization a session key can read.
+public struct WebOrganization: Hashable, Identifiable, Sendable {
+    public var id: String { uuid }
+    public let uuid: String
+    public let name: String
+    public let plan: String?
+
+    public init(uuid: String, name: String, plan: String?) {
+        self.uuid = uuid
+        self.name = name
+        self.plan = plan
+    }
+
+    /// A starting name for the account: "Acme" stays, a personal "ann@example.com's
+    /// Organization" becomes "ann@example.com".
+    public var suggestedName: String {
+        for suffix in ["'s Organization", "’s Organization"] where name.hasSuffix(suffix) {
+            return String(name.dropLast(suffix.count))
+        }
+        return name
     }
 }

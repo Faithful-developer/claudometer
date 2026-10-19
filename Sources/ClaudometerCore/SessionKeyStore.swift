@@ -1,20 +1,38 @@
 import Foundation
 import Security
 
-/// The claude.ai session key the user pastes in Settings, kept in Claudometer's own Keychain
-/// item. The key is never written to disk, `UserDefaults`, logs or the widget's shared folder.
+/// A claude.ai session key the user pastes in Settings, kept in Claudometer's own Keychain
+/// item: one per account (TZ F-2). The Claude Code account's key is its backup and keeps the
+/// item name it had before accounts existed. The key is never written to disk, `UserDefaults`,
+/// logs or the widget's shared folder.
 ///
 /// The item is created and read through `/usr/bin/security`, so its access list trusts that
 /// tool rather than this build's ad-hoc signature, and rebuilds or updates don't bring back
 /// the Keychain password prompt.
 public struct SessionKeyStore: Sendable {
     public static let service = "dev.claudometer.claude-ai-session"
-    static let account = "sessionKey.v2"
     /// Item saved by 0.1.3 and earlier through the Security framework; its access list is tied
     /// to one build. `migrateLegacyKey()` moves it over.
     static let legacyAccount = "sessionKey"
 
-    public init() {}
+    public let accountID: String
+    /// Keychain account name of this store's item.
+    let account: String
+
+    public init(accountID: String = Account.primaryID) {
+        self.accountID = accountID
+        self.account = Self.keychainAccount(for: accountID)
+    }
+
+    static func keychainAccount(for accountID: String) -> String {
+        accountID == Account.primaryID ? "sessionKey.v2" : "sessionKey.\(accountID)"
+    }
+
+    static func pausedKey(for accountID: String) -> String {
+        accountID == Account.primaryID ? "sessionKeyAccessPaused" : "sessionKeyAccessPaused.\(accountID)"
+    }
+
+    private var isPrimary: Bool { accountID == Account.primaryID }
 
     public enum Access: Equatable, Sendable {
         case key(String)
@@ -24,7 +42,7 @@ public struct SessionKeyStore: Sendable {
     }
 
     public func read() -> Access {
-        guard let output = SecurityTool.run(["find-generic-password", "-s", Self.service, "-a", Self.account, "-w"]) else {
+        guard let output = SecurityTool.run(["find-generic-password", "-s", Self.service, "-a", account, "-w"]) else {
             return .denied
         }
         switch output.status {
@@ -53,7 +71,7 @@ public struct SessionKeyStore: Sendable {
 
     /// Checks the items' attributes only, which never shows a Keychain prompt. Counts a key
     /// still waiting to be migrated.
-    public var hasKey: Bool { hasItem(Self.account) || hasItem(Self.legacyAccount) }
+    public var hasKey: Bool { hasItem(account) || (isPrimary && hasItem(Self.legacyAccount)) }
 
     private func hasItem(_ account: String) -> Bool {
         let query: [String: Any] = [
@@ -69,9 +87,10 @@ public struct SessionKeyStore: Sendable {
 
     /// Moves a key saved by 0.1.3 or earlier into the current item. Reading the old item shows
     /// the Keychain prompt once; a denial pauses the backup like any other denied read. Does
-    /// nothing (and never prompts) once there's no old item left.
+    /// nothing (and never prompts) once there's no old item left. Only the Claude Code
+    /// account's backup is that old.
     public func migrateLegacyKey() {
-        guard !isPaused, hasItem(Self.legacyAccount), !hasItem(Self.account) else { return }
+        guard isPrimary, !isPaused, hasItem(Self.legacyAccount), !hasItem(account) else { return }
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: Self.service,
@@ -98,16 +117,14 @@ public struct SessionKeyStore: Sendable {
 
     /// Set after a denied Keychain prompt; kept across launches.
     public var isPaused: Bool {
-        get { UserDefaults.standard.bool(forKey: Self.pausedKey) }
-        nonmutating set { UserDefaults.standard.set(newValue, forKey: Self.pausedKey) }
+        get { UserDefaults.standard.bool(forKey: Self.pausedKey(for: accountID)) }
+        nonmutating set { UserDefaults.standard.set(newValue, forKey: Self.pausedKey(for: accountID)) }
     }
-
-    static let pausedKey = "sessionKeyAccessPaused"
 
     public func save(_ key: String) throws {
         // Hex via stdin: no quoting to get wrong, and the key never shows up in `ps`.
         let hex = Data(key.utf8).map { String(format: "%02x", $0) }.joined()
-        let command = "add-generic-password -U -s \(Self.service) -a \(Self.account) "
+        let command = "add-generic-password -U -s \(Self.service) -a \(account) "
             + "-l \"Claudometer claude.ai session\" -X \(hex)\n"
         guard SecurityTool.run(["-i"], input: command)?.status == 0, read() == .key(key) else {
             throw AppError.keychainDenied
@@ -118,12 +135,13 @@ public struct SessionKeyStore: Sendable {
     }
 
     public func delete() {
-        _ = SecurityTool.run(["delete-generic-password", "-s", Self.service, "-a", Self.account])
+        _ = SecurityTool.run(["delete-generic-password", "-s", Self.service, "-a", account])
         deleteLegacyItem()
-        isPaused = false
+        UserDefaults.standard.removeObject(forKey: Self.pausedKey(for: accountID))
     }
 
     private func deleteLegacyItem() {
+        guard isPrimary else { return }
         let match: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: Self.service,

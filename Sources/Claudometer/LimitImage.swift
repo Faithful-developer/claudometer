@@ -9,9 +9,11 @@ enum LimitImage {
     /// Output pixels per point, matching the preview renders.
     static let scale: CGFloat = 3
 
-    /// App name, "Plan Usage Limits · <plan>", one row per limit (title, "x% · resets …", meter),
-    /// and the time the card was made, since the countdowns are relative.
-    static func card(snapshot: UsageSnapshot, stale: Bool, now: Date, colorScheme: ColorScheme) -> some View {
+    /// App name, "Plan Usage Limits · <account> · <plan>", one row per limit (title,
+    /// "x% · resets …", meter), and the time the card was made, since the countdowns are
+    /// relative. `account` is nil while there's only one.
+    static func card(snapshot: UsageSnapshot, account: String? = nil, stale: Bool, now: Date, colorScheme: ColorScheme) -> some View {
+        let subtitle = [account, Formatters.planName(snapshot.plan)].compactMap { $0 }.joined(separator: " · ")
         let settings = AppSettings.current
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
@@ -22,7 +24,7 @@ enum LimitImage {
                 }
                 Text(verbatim: "Claudometer").font(.system(size: 17, weight: .bold)).foregroundStyle(Ink.primary)
             }
-            SectionHeader(Formatters.planName(snapshot.plan).map { tr("Plan Usage Limits · %@", $0) } ?? tr("Plan Usage Limits"))
+            SectionHeader(subtitle.isEmpty ? tr("Plan Usage Limits") : tr("Plan Usage Limits · %@", subtitle))
                 .padding(.top, 12)
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(snapshot.windows) { window in
@@ -75,10 +77,10 @@ enum LimitImage {
     }
 
     /// Draws the card in the given appearance; dynamic palette colours resolve against it.
-    static func image(snapshot: UsageSnapshot, stale: Bool, now: Date, colorScheme: ColorScheme) -> NSImage? {
+    static func image(snapshot: UsageSnapshot, account: String? = nil, stale: Bool, now: Date, colorScheme: ColorScheme) -> NSImage? {
         var result: NSImage?
         NSAppearance(named: colorScheme == .dark ? .darkAqua : .aqua)?.performAsCurrentDrawingAppearance {
-            let renderer = ImageRenderer(content: card(snapshot: snapshot, stale: stale, now: now, colorScheme: colorScheme))
+            let renderer = ImageRenderer(content: card(snapshot: snapshot, account: account, stale: stale, now: now, colorScheme: colorScheme))
             renderer.scale = scale
             result = renderer.nsImage
         }
@@ -87,9 +89,9 @@ enum LimitImage {
 
     /// Returns true when the image reached the clipboard.
     @discardableResult
-    static func copy(snapshot: UsageSnapshot?, stale: Bool, now: Date, colorScheme: ColorScheme) -> Bool {
+    static func copy(snapshot: UsageSnapshot?, account: String? = nil, stale: Bool, now: Date, colorScheme: ColorScheme) -> Bool {
         guard let snapshot,
-              let image = image(snapshot: snapshot, stale: stale, now: now, colorScheme: colorScheme),
+              let image = image(snapshot: snapshot, account: account, stale: stale, now: now, colorScheme: colorScheme),
               let png = pngData(image, scale: scale) else { return false }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()

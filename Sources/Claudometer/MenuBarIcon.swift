@@ -32,8 +32,11 @@ enum MenuBarIcon {
     private static let font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
     private static let letterFont = NSFont.systemFont(ofSize: 7, weight: .bold)
 
-    /// - Parameter updateBadge: a dot on the primary ring while a new version is waiting.
-    static func image(primary: Ring, extras: [Ring], stale: Bool, compact: Bool, updateBadge: Bool = false, now: Date = Date()) -> NSImage {
+    /// - Parameters:
+    ///   - updateBadge: a dot on the primary ring while a new version is waiting.
+    ///   - account: the account shown, named for VoiceOver when there's more than one.
+    static func image(primary: Ring, extras: [Ring], stale: Bool, compact: Bool, updateBadge: Bool = false,
+                      account: String? = nil, now: Date = Date()) -> NSImage {
         let rings = [primary] + extras
         let width = rings.map { ringWidth($0, compact: compact) }.reduce(0, +) + ringGap * CGFloat(extras.count)
 
@@ -49,9 +52,10 @@ enum MenuBarIcon {
         // Template (monochrome, tinted by the system like other menu bar icons) unless there
         // is a warning to show in colour.
         image.isTemplate = stale || rings.allSatisfy { $0.level == .ok || $0.level == .unknown }
-        image.accessibilityDescription = ([accessibilityDescription(utilization: primary.utilization, level: primary.level, stale: stale, resetsAt: primary.resetsAt, now: now)]
+        let described = [accessibilityDescription(utilization: primary.utilization, level: primary.level, stale: stale, resetsAt: primary.resetsAt, now: now)]
             + extras.map { extraDescription($0, stale: stale, now: now) }
-            + (updateBadge ? [tr("Update available")] : [])).joined(separator: ". ")
+            + (updateBadge ? [tr("Update available")] : [])
+        image.accessibilityDescription = ([account].compactMap { $0 } + described).joined(separator: ". ")
         return image
     }
 

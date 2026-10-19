@@ -5,6 +5,7 @@
 "Claude Usage" = "Лимиты Claude";
 "Your Claude plan limits and when they reset." = "Лимиты вашего плана Claude и время их сброса.";
 "Refresh Claude Usage" = "Обновить лимиты Claude";
+"Choose the Claude account this widget shows." = "Выберите аккаунт Claude для этого виджета.";
 "Fetches your latest Claude plan usage." = "Загружает актуальные данные об использовании плана Claude.";
 
 /* Popover */
@@ -105,7 +106,7 @@
 /* Settings: tabs */
 "General" = "Основные";
 "Notifications" = "Уведомления";
-"Login" = "Вход";
+"Accounts" = "Аккаунты";
 "About" = "О программе";
 
 /* Settings: General */
@@ -119,7 +120,7 @@
 "Menu Bar" = "Строка меню";
 "Show" = "Показывать";
 "Always show" = "Показывать всегда";
-"Sign in on the Login tab first." = "Сначала войдите на вкладке «Вход».";
+"Sign in on the Accounts tab first." = "Сначала войдите на вкладке «Аккаунты».";
 "Available after the first update." = "Появится после первого обновления данных.";
 "Show percentage" = "Показывать проценты";
 "Show other limits when high" = "Показывать другие лимиты при высоком расходе";
@@ -162,6 +163,33 @@
 " · Session %@" = " · Сессия %@";
 "claude.ai didn’t accept this key. Copy it again from a signed-in browser." = "claude.ai не принял этот ключ. Скопируйте его заново в браузере, где выполнен вход.";
 "claude.ai’s bot check blocked the request, so this backup can’t work right now." = "Защита claude.ai от ботов заблокировала запрос, поэтому запасной источник сейчас недоступен.";
+
+/* Settings: Accounts */
+"Claude Code" = "Claude Code";
+"Account" = "Аккаунт";
+"Name" = "Название";
+"Work" = "Работа";
+"Status" = "Состояние";
+"Connecting…" = "Подключение…";
+"Session %@" = "Сессия %@";
+"New key" = "Новый ключ";
+"Replace Key…" = "Заменить ключ…";
+"Remove Account…" = "Удалить аккаунт…";
+"Remove Account" = "Удалить аккаунт";
+"Remove “%@”?" = "Удалить «%@»?";
+"Its session key is deleted from your Keychain, and its usage history from this Mac." = "Его ключ сессии будет удален из связки ключей, а история использования — с этого Mac.";
+"Keychain access was denied, so this account is paused." = "Доступ к связке ключей запрещен, поэтому аккаунт приостановлен.";
+"Add Account" = "Добавить аккаунт";
+"Organization" = "Организация";
+"You can add up to %lld accounts." = "Можно добавить не более %lld аккаунтов.";
+"Claudometer can’t read its list of accounts, so accounts can’t be added or renamed." = "Claudometer не может прочитать список аккаунтов, поэтому добавлять и переименовывать аккаунты сейчас нельзя.";
+"Track another Claude account, such as a work Team plan, with the session key of a browser signed in to it. The steps are the same as above." = "Следите за другим аккаунтом Claude, например рабочим планом Team, по ключу сессии из браузера, где выполнен вход в него. Шаги те же, что выше.";
+"This login has several organizations. Pick one, then click Add Account." = "У этого входа несколько организаций. Выберите одну и нажмите «Добавить аккаунт».";
+"This is your Claude Code account, so the key was saved as its backup." = "Это ваш аккаунт Claude Code, поэтому ключ сохранен как его запасной источник.";
+"Already added as “%@”." = "Уже добавлен как «%@».";
+"%@, needs attention" = "%@, требует внимания";
+"Account removed" = "Аккаунт удален";
+"Edit the widget to choose another." = "Измените виджет, чтобы выбрать другой.";
 
 /* Settings: About */
 "Version %@" = "Версия %@";
