@@ -80,6 +80,20 @@ enum PreviewRenderer {
                 write(image, scale: pixelScale, to: dir.appendingPathComponent("popover-\(name)\(suffix(sample, language)).png"))
             }
 
+            // The weekly chart with a day under the pointer; hover never fires in ImageRenderer.
+            let weeklyId = store.state.snapshot?.weekly?.id ?? "weekly_all"
+            if store.history.daysWithData(windowId: weeklyId) >= 2 {
+                let days = store.history.dailyUse(windowId: weeklyId, now: Date())
+                let hoverRenderer = ImageRenderer(content: DailyUseSection(days: days, hovered: max(days.count - 3, 0))
+                    .frame(width: 300)
+                    .background(Palette.canvas)
+                    .environment(\.colorScheme, name == "dark" ? .dark : .light))
+                hoverRenderer.scale = pixelScale
+                if let image = hoverRenderer.nsImage {
+                    write(image, scale: pixelScale, to: dir.appendingPathComponent("daily-hover-\(name)\(suffix(sample, language)).png"))
+                }
+            }
+
             // The clipboard card from clicking a limit in the popover.
             if let snapshot = store.state.snapshot,
                let image = LimitImage.image(snapshot: snapshot, account: store.hasManyAccounts ? store.selected.title : nil, stale: store.state.isStale, now: Date(), colorScheme: name == "dark" ? .dark : .light) {

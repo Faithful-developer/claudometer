@@ -118,19 +118,8 @@ struct PopoverView: View {
 
             // Usage per day of the weekly limit, once there's more than a day of history.
             if snapshot != nil, store.history.daysWithData(windowId: weeklyId) >= 2 {
-                let days = store.history.dailyUse(windowId: weeklyId, now: now)
                 MenuDivider()
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(alignment: .firstTextBaseline) {
-                        SectionHeader(tr("Weekly Limit by Day"))
-                        Spacer()
-                        Text(tr("Today %@", Formatters.percent(days.last?.percent ?? 0)))
-                            .font(.system(size: 11).monospacedDigit())
-                            .foregroundStyle(Ink.secondary)
-                    }
-                    DailyBars(days: days)
-                }
-                .padding(.horizontal, 14).padding(.vertical, 8)
+                DailyUseSection(days: store.history.dailyUse(windowId: weeklyId, now: now))
             }
 
             if let breakdown = snapshot?.breakdown, breakdown.contains(where: { $0.percent > 0 }) {
@@ -615,6 +604,46 @@ struct MenuRowStyle: ButtonStyle {
 /// `@State` needs the SwiftUI macro plugin, which the Command Line Tools lack.
 final class HoverState: ObservableObject {
     @Published var isOn = false
+}
+
+/// Weekly limit used per day. The header shows today's share, or the hovered day's.
+struct DailyUseSection: View {
+    let days: [UsageHistory.Day]
+    @StateObject private var hover: HoveredDay
+
+    /// `hovered` seeds the highlighted day; only previews pass it, since `ImageRenderer` never hovers.
+    init(days: [UsageHistory.Day], hovered: Int? = nil) {
+        self.days = days
+        _hover = StateObject(wrappedValue: HoveredDay(index: hovered))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                SectionHeader(tr("Weekly Limit by Day"))
+                Spacer()
+                Text(label)
+                    .font(.system(size: 11).monospacedDigit())
+                    .foregroundStyle(Ink.secondary)
+            }
+            DailyBars(days: days, hovered: hover.index) { hover.index = $0 }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 8)
+    }
+
+    private var label: String {
+        guard let index = hover.index, days.indices.contains(index), index != days.count - 1 else {
+            return tr("Today %@", Formatters.percent(days.last?.percent ?? 0))
+        }
+        let day = days[index]
+        return tr("%@ %@", DailyBars.weekday(day.date).capitalized(with: L10n.locale), Formatters.percent(day.percent))
+    }
+}
+
+/// Which bar of `DailyBars` is under the pointer; an object for the same reason as `HoverState`.
+final class HoveredDay: ObservableObject {
+    @Published var index: Int?
+    init(index: Int? = nil) { self.index = index }
 }
 
 // MARK: - Errors

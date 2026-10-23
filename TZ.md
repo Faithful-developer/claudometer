@@ -422,6 +422,7 @@ Stale data (E-3 to E-6) is still displayed but greyed out, with a "Showing data 
 - **0.2.1 (2026-10-11):** in-app **Install Update**, usage history and forecast (F-3, F-4), Homebrew tap and `scripts/install.sh` (F-6).
 - **0.2.2 (2026-10-12):** daily anonymous check-in counter (random ID, version, language, macOS version only).
 - **0.3.0 (2026-10-19):** multiple accounts (F-2, §2.4).
+- **0.3.1 (2026-10-23):** hover a day in the weekly chart to see its weekday and share.
 
 ---
 

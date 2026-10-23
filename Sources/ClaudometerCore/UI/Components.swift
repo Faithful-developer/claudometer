@@ -311,12 +311,17 @@ public struct BreakdownChart: View {
 
 /// Usage per day as small vertical bars, oldest left, today right, with weekday initials.
 /// Bars scale to the busiest day (at least 10 points, so a quiet week doesn't look full).
+/// `onHover` reports the day under the pointer (nil when it leaves); `hovered` gets its initial highlighted.
 public struct DailyBars: View {
     let days: [UsageHistory.Day]
+    let hovered: Int?
+    let onHover: ((Int?) -> Void)?
     @Environment(\.colorSchemeContrast) private var contrast
 
-    public init(days: [UsageHistory.Day]) {
+    public init(days: [UsageHistory.Day], hovered: Int? = nil, onHover: ((Int?) -> Void)? = nil) {
         self.days = days
+        self.hovered = hovered
+        self.onHover = onHover
     }
 
     public var body: some View {
@@ -324,6 +329,7 @@ public struct DailyBars: View {
         HStack(alignment: .bottom, spacing: 6) {
             ForEach(Array(days.enumerated()), id: \.offset) { index, day in
                 let isToday = index == days.count - 1
+                let isMarked = hovered.map { $0 == index } ?? isToday
                 VStack(spacing: 4) {
                     ZStack(alignment: .bottom) {
                         Capsule().fill(Ink.track(contrast))
@@ -333,10 +339,15 @@ public struct DailyBars: View {
                     }
                     .frame(width: 10, height: 30)
                     Text(Self.initial(day.date))
-                        .font(.system(size: 10, weight: isToday ? .semibold : .regular))
-                        .foregroundStyle(isToday ? Ink.primary : Ink.tertiary(contrast))
+                        .font(.system(size: 10, weight: isMarked ? .semibold : .regular))
+                        .foregroundStyle(isMarked ? Ink.primary : Ink.tertiary(contrast))
                 }
                 .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+                .onHover { inside in
+                    // Leaving one column can arrive after entering the next; only clear our own.
+                    if inside { onHover?(index) } else if hovered == index { onHover?(nil) }
+                }
             }
         }
         .accessibilityElement(children: .ignore)
@@ -350,7 +361,7 @@ public struct DailyBars: View {
         return formatter.string(from: date)
     }
 
-    static func weekday(_ date: Date) -> String {
+    public static func weekday(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = L10n.locale
         formatter.setLocalizedDateFormatFromTemplate("EEEE")
