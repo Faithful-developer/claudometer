@@ -4,7 +4,7 @@
 |---|---|
 | **Product** | Claudometer: a macOS menu bar app and desktop widget for Claude plan usage limits |
 | **Version** | 1.0 (draft) |
-| **Date** | 2026-10-06 |
+| **Date** | 2026-10-06, updated 2026-10-31 |
 | **Platform** | macOS 14 Sonoma and later |
 | **Stack** | Swift 5.10+, SwiftUI, WidgetKit, no third-party dependencies |
 
@@ -13,11 +13,11 @@
 ## 1. Overview
 
 ### 1.1 Purpose
-Claude Pro and Max subscribers have rolling usage limits: a **5-hour session** window and **weekly** windows. Today the only ways to see how much is left are to open claude.ai → Settings → Usage, or to run `/usage` inside Claude Code. Claudometer keeps these numbers visible all the time, in the menu bar and on the desktop. Users can pace their work and won't hit a limit by surprise.
+Claude Pro, Max and Ultra subscribers have rolling usage limits: a **5-hour session** window (not on verified Ultra accounts, §2.7) and **weekly** windows. Today the only ways to see how much is left are to open claude.ai → Settings → Usage, or to run `/usage` inside Claude Code. Claudometer keeps these numbers visible all the time, in the menu bar and on the desktop. Users can pace their work and won't hit a limit by surprise.
 
 ### 1.2 Target user
 A developer or power user on macOS who:
-- has a Claude Pro or Max subscription, and
+- has a Claude Pro, Max or Ultra subscription, and
 - uses Claude Code and is logged in with their Claude account. The app gets its credentials from Claude Code.
 
 ### 1.3 Goals
@@ -75,12 +75,14 @@ User-Agent: Claudometer/<version>
 - Claudometer **only reads** this item. It tries `/usr/bin/security find-generic-password` first (the item trusts that tool, so app rebuilds don't bring back the Keychain prompt), then `SecItemCopyMatching`, then `~/.claude/.credentials.json`. It never writes to it or deletes it.
 - If `expiresAt` (in ms) is in the past, the app shows the "Token expired" state (§7). Claude Code refreshes the token the next time it runs.
 - `subscriptionType`, if present, is shown in the popover footer, for example "Max".
+- `subscriptionType` may be `"pro"`, `"max"` or `"ultra"`. Any other string is shown capitalised as-is. Since the 2026-10-30 rename, `"max"` means the former Max 5x, and the former Max 20x is `"ultra"` (§2.7).
 
 ### 2.3 Fallback: claude.ai session key (implemented 2026-10-07)
 A claude.ai session cookie (`sessionKey`), entered manually in Settings → Accounts and stored in Claudometer's own Keychain item (`dev.claudometer.claude-ai-session`):
 `GET https://claude.ai/api/organizations` → `GET https://claude.ai/api/organizations/{uuid}/usage`. The response shape is the same as §2.1.
 - Used only when Claude Code's login is missing, expired or unreadable (E-1…E-3). Claude Code's token always comes first.
 - "Save & Test" checks the key against claude.ai and stores it only if it works.
+- The plan comes from the organization's capabilities: `claude_ultra` → "ultra" (name to be confirmed, Q-3), then `claude_max` → "max", then `claude_pro` → "pro".
 - HTTP 401, or 403 with a JSON body → "session key expired" (normal polling cadence until the user pastes a new key). 403 with an HTML body or `cf-mitigated` → "blocked by claude.ai" (Cloudflare bot check; backoff).
 - The key is never written to disk, logs or the widget's folder. The snapshot records only which source was used.
 - While every source fails, windows whose reset time has passed read 0% (weekly windows roll forward a week; a session window has no reset until it is used again). An expired Claude Code token is re-checked every minute.
@@ -117,7 +119,7 @@ struct LimitWindow: Codable, Identifiable {
 
 struct UsageSnapshot: Codable {
     let windows: [LimitWindow]
-    let plan: String?           // "pro" | "max" | nil
+    let plan: String?           // "pro" | "max" | "ultra" | nil
     let fetchedAt: Date
 }
 
@@ -128,6 +130,14 @@ enum UsageState: Codable {
 }
 ```
 
+### 2.7 Plans without a session window (Ultra, 2026-10-30)
+- **What changed.** On 2026-10-30 Anthropic renamed Max 5x to **Max** and Max 20x to **Ultra**, with prices unchanged, and removed the **five-hour session limit for verified Ultra accounts**. Weekly limits (all models and per model) stay on every plan. A new Ultra account keeps a temporary session limit until Anthropic verifies it automatically from account and payment history; the "Current session" bar then disappears from claude.ai › Settings › Usage. Max, Pro, Team and the free tier keep the five-hour window.
+- **Response shape.** For such accounts the usage response has **no `limits` entry with `kind: "session"`**, and the legacy `five_hour` key is **absent or `null`**. Everything else (weekly entries, `seven_day_breakdown`, `extra_usage`) is unchanged. `UsageDecoder` already accepts this: `limits` are decoded one by one, a `null` legacy key is skipped, and `.apiChanged` (E-7) is thrown only when the list is empty. `UsageSnapshot.session` is `nil` and `sorted` puts `weekly_all` first.
+- **A plan feature, not an error.** "No session window in the latest data" is the normal state of that account. The app never greys the data, retries faster or shows E-7 for it.
+- **Plan name.** `subscriptionType` (§2.2) or the claude.ai organization capabilities (§2.3) may read `"ultra"`, shown as "Ultra" through `Formatters.planName`. The app **never infers the plan from a missing session window**, and never infers a missing session window from the plan: an unverified Ultra account still has one, and a Max account could lack one briefly if the server drops it.
+- **Transition.** The session window can disappear between two polls, when verification completes or the user switches account. The alert tracker keeps a missing window's record until its `resetsAt` passes and then drops it **without** a "Limit reset" notification (FR-21). Its history samples age out after 8 days, and an "Always show" pin on `session` is skipped (FR-28). No migration is needed. If a session window **comes back** (an unverified account, or a downgrade to Max), every rule in §3.8 reverses by itself, because they are evaluated on each snapshot and nothing is stored.
+- **Data model.** `MenuBarMetric.session` stays the stored default and is **resolved per snapshot** (FR-31). No new enum case and no new settings key.
+
 ---
 
 ## 3. Functional requirements
@@ -136,7 +146,7 @@ enum UsageState: Codable {
 - **FR-1:** The app runs as a menu bar–only agent app (`LSUIElement = YES`, no Dock icon).
 - **FR-2:** The menu bar shows a small ring/gauge icon and the % of the **primary metric**, for example `◔ 42%`.
 - **FR-3:** The primary metric can be chosen in Settings:
-  - Session (5h), the default
+  - Session (5h), the default. It resolves to Weekly (all models) when the data has no session window (FR-31).
   - Weekly
   - Highest of all windows
 - **FR-4:** The colour depends on utilization, and the thresholds can be changed in Settings:
@@ -146,7 +156,7 @@ enum UsageState: Codable {
   - grey when the data is stale or there is an error
 - **FR-5:** Optional "compact" mode shows the icon only, without the % text.
 - **FR-27:** Up to two other limits at or above a threshold (default **80%**, Settings › Menu Bar › Show other limits when high, can be turned off) get their own ring after the primary one and any added limits (FR-28), highest first. Limits already shown are skipped, and added limits count toward the two. Each is marked so it's clear which limit it is: **5** for the 5-hour session, **W** for weekly (all models), or the model's initial (**F** Fable, **S** Sonnet, **O** Opus). The ring takes the limit's level colour, the mark is plain ink, and its percent follows unless compact mode is on. The cap keeps the item narrow enough that macOS doesn't hide it on notched displays. Example: session 50%, weekly 80%, Fable 88% → `◔ 50%  Ⓕ 88%  Ⓦ 80%`.
-- **FR-28:** Up to two other limits can be added to the menu bar so they show all the time (Settings › Menu Bar › **Always show**, one checkbox per limit in the latest data; none by default). Each checkbox is labelled like the "Show" picker ("Weekly (all models)", "Weekly (Fable)") and carries the ring's mark as a plain ink outline, so it's clear which ring it adds; once two are ticked the others are disabled. Added limits get their marked ring after the primary one, in the usual order (session, weekly all models, then per model), whatever their level. A limit that is currently the primary one isn't repeated, and an added limit missing from the data (e.g. a model that's gone) is skipped. Example: session 26%, weekly 41% and Fable 57% added → `◔ 26%  Ⓦ 41%  Ⓕ 57%`.
+- **FR-28:** Up to two other limits can be added to the menu bar so they show all the time (Settings › Menu Bar › **Always show**, one checkbox per limit in the latest data; none by default). Each checkbox is labelled like the "Show" picker ("Weekly (all models)", "Weekly (Fable)") and carries the ring's mark as a plain ink outline, so it's clear which ring it adds; once two are ticked the others are disabled. Added limits get their marked ring after the primary one, in the usual order (session, weekly all models, then per model), whatever their level. A limit that is currently the primary one isn't repeated, and an added limit missing from the data (e.g. a model that's gone) is skipped. Example: session 26%, weekly 41% and Fable 57% added → `◔ 26%  Ⓦ 41%  Ⓕ 57%`. The limit the primary metric resolves to (FR-31) counts as the primary one, so on a plan without a session window Weekly (all models) is not offered as an extra ring.
 
 ### 3.2 Popover (click on the menu bar item)
 - **FR-6:** One row per limit window, each with:
@@ -160,8 +170,8 @@ enum UsageState: Codable {
 
 ### 3.3 Desktop / Notification Center widget (WidgetKit)
 - **FR-10:** Three widget families are supported:
-  - **Small (`systemSmall`):** a large ring for the primary metric, the %, and "resets in Xh Ym".
-  - **Medium (`systemMedium`):** Session and Weekly bars with % and reset times.
+  - **Small (`systemSmall`):** a large ring for the primary metric (FR-31), the %, and "resets in Xh Ym".
+  - **Medium (`systemMedium`):** the primary metric (FR-31) and the next two limits, with % and reset times.
   - **Large (`systemLarge`):** all windows, the plan name and "updated at" time.
 - **FR-11:** The widget reads the latest `UsageState` from the shared folder `~/Library/Application Support/Claudometer/` (NFR-7). **The widget makes no network calls.**
 - **FR-12:** The app calls `WidgetCenter.shared.reloadAllTimelines()` after each successful fetch.
@@ -203,6 +213,45 @@ enum UsageState: Codable {
   3. If you are not logged in, run `claude` in Terminal, then `/login`.
 - **FR-25:** Each error state from §7 has its own message and recovery action.
 - **FR-26:** In the popover, hovering a limit (the hero ring or a weekly row) highlights it with the tooltip "Click to copy as an image". Clicking any limit copies one card with all limits to the clipboard as PNG/TIFF, in the current appearance, and shows "Copied" briefly. The card holds the app name, "Plan Usage Limits · <plan>", one row per limit ("x% · resets …" plus meter) and the date and time it was made. Nothing else in the popover copies, and the desktop widget does not do this.
+
+### 3.8 Plans without a session limit (§2.7)
+- **FR-31 · Metric resolution.** `UsageSnapshot.window(for:)` with `.session` returns the session window if there is one, else **Weekly (all models)** (`weekly_all`, or the first weekly window), else the highest limit. `.weekly` and `.highest` are unchanged. This one rule drives the menu bar ring (FR-2), the popover hero (FR-6), the widgets (FR-10), "Always show" (FR-28) and the extra rings (FR-27), so they all agree. The current fallback to Highest is removed: it changes which limit it shows as usage moves, and the primary ring has no mark to say which one it is.
+- **FR-32 · Settings.**
+  - The Show picker keeps all three entries and the stored value.
+  - When Session is selected and the selected account's latest data has no session window, the Menu Bar section's footer starts with **"This account has no 5-hour session limit, so Weekly (all models) is shown."**
+  - The "Always show" list hides the limit the primary metric resolved to, so Weekly (all models) is not offered while it is already the main ring. Ticking a box keeps only pins on limits the list shows, so a pin on the gone session window or on the main ring can't push past the two-pin cap.
+  - The footer note appears only when the resolved limit really is Weekly (all models).
+  - The Accounts status line reads **"Ultra plan · Weekly 41%"** instead of dropping its second part. Save & Test does the same (`" · Weekly %@"`).
+- **FR-33 · Popover.**
+  - The hero shows the resolved window with its own title, for example "Weekly · all models". "Current Session" stays reserved for a session window.
+  - Under the hero, a muted caption **"No 5-hour session limit on this plan"** appears when the snapshot has no session window. It is not shown while signed out, expired or in E-7.
+  - The limits list, the pace forecast (a weekly window uses the 24-hour look-back, F-4), the weekly chart, the copy-as-image card (FR-26) and the footer plan name ("Ultra plan") need no new rule.
+- **FR-34 · Widgets.**
+  - **Small:** the ring for the resolved window, labelled "Weekly" or "Weekly · Model".
+  - **Medium:** the resolved window plus the next two limits.
+  - **Large:** the resolved window with its forecast, the other rows and the breakdown. The FR-33 caption goes under the hero ring, as in the popover, when there is no session window and the data is fresh. With the caption, the widget shows at most two other rows, so the card doesn't overflow. The footer is too narrow for it in Russian. The plan name reads "Ultra".
+  - `WidgetStyle.metric` keeps the stored value. The widget resolves it from its own snapshot. The placeholder snapshot is unchanged.
+- **FR-35 · Alerts.** No new notification. Threshold alerts (FR-20) and reset alerts (FR-21) keep working per window id. The session window going away produces neither a reset alert nor a "Usage stops updating" alert (FR-29). Reset-aligned polling (FR-15…FR-17) works with whatever windows exist.
+- **Preview sample `ultra`:** `--render-previews … --sample ultra` renders plan "ultra" with no session window, Weekly (all models) 41% and Weekly (Fable) 57%, plus a week of history so the chart and the forecast render. The sample history must no longer require a session window. The sample is added to the lists in `README.md`, `CLAUDE.md`, `.claude/agents/design-review.md` and `.claude/commands/design-review.md`.
+- **Tests (extends AC-10):**
+  - A fixture `sample-usage-ultra.json` (the real sample with `five_hour` and the `session` entry removed) decodes to `["weekly_all", "weekly_scoped:Fable"]` and is not E-7.
+  - `window(for: .session)` resolves to `weekly_all`.
+  - `menuBarWindows` with the session metric and `weekly_all` pinned does not repeat it.
+  - The capability `claude_ultra` maps to "ultra".
+  - A session window disappearing between two evaluations fires no reset alert.
+  - A weekly window gets a forecast with no session samples in the history.
+  - The new strings have Russian translations.
+- **Russian strings:**
+
+  | English | Russian |
+  |---|---|
+  | No 5-hour session limit on this plan | На этом плане нет 5‑часового лимита сессии |
+  | This account has no 5-hour session limit, so Weekly (all models) is shown. | У этого аккаунта нет 5‑часового лимита сессии, поэтому показан лимит «Неделя (все модели)». |
+  | ` · Weekly %@` | ` · Неделя %@` |
+  | `Weekly %@` | `Неделя %@` |
+
+  Plan names stay untranslated ("Ultra").
+- **Docs:** in `README.md`, "A Claude Pro/Max subscription" becomes "A Claude Pro, Max or Ultra subscription", and the usage section gets a line saying Ultra accounts see weekly limits only.
 
 ---
 
@@ -383,6 +432,8 @@ claude-widget/
 
 Stale data (E-3 to E-6) is still displayed but greyed out, with a "Showing data from HH:MM" note.
 
+A response with weekly windows but no session window is **not** E-7. It is the normal shape for a verified Ultra account (§2.7). E-7 fires only when there are no windows at all.
+
 ---
 
 ## 8. Milestones
@@ -423,6 +474,7 @@ Stale data (E-3 to E-6) is still displayed but greyed out, with a "Showing data 
 - **0.2.2 (2026-10-12):** daily anonymous check-in counter (random ID, version, language, macOS version only).
 - **0.3.0 (2026-10-19):** multiple accounts (F-2, §2.4).
 - **0.3.1 (2026-10-23):** hover a day in the weekly chart to see its weekday and share.
+- **0.4.0 (2026-10-31):** plans without a session limit (F-7, §2.7, §3.8).
 
 ---
 
@@ -438,6 +490,8 @@ Stale data (E-3 to E-6) is still displayed but greyed out, with a "Showing data 
 - **AC-8:** The token does not appear in any file under `~/Library` or in the Console.app logs. Checked with `grep -r` for the token prefix.
 - **AC-9:** Idle CPU averages under 1% over 10 minutes, measured in Activity Monitor.
 - **AC-10:** Unit tests cover decoding (known, unknown and missing keys), backoff, threshold de-duplication and countdown formatting. All pass.
+- **AC-11:** With a verified Ultra account, or the `ultra` sample, and the Session metric selected: the menu bar shows the Weekly (all models) %, the popover hero is "Weekly · all models" with the "No 5-hour session limit on this plan" caption, Settings shows the FR-32 footnote and the small widget ring reads "Weekly". There is no E-7 and no greyed data.
+- **AC-12:** When the session window disappears between two polls (a test feeds the normal fixture, then the Ultra one), no "Limit reset" and no "Usage stops updating" notification is produced, and a pinned session ring simply goes away.
 
 ---
 
@@ -445,9 +499,11 @@ Stale data (E-3 to E-6) is still displayed but greyed out, with a "Showing data 
 
 - **Q-1:** Do the exact response fields (`seven_day_sonnet`, extra-usage or "overage" fields) differ between Pro and Max? This is answered in M1.
 - **Q-2:** Should the app ask Claude Code to refresh an expired token? **Answered:** no. Tested on 2026-10-11: `claude auth status` doesn't renew an expired token, and `claude -p` would spend usage. The claude.ai session key (§2.3) covers this case.
+- **Q-3:** What exact strings do an Ultra account's Claude Code credentials (`subscriptionType`, `rateLimitTier`) and claude.ai organization capabilities carry? Assumed `"ultra"` and `claude_ultra`, to be confirmed on a real Ultra account. Until then an unknown string is shown capitalised as-is, which is the current behaviour.
 - **F-1:** ~~The claude.ai cookie fallback (§2.3) for users who don't use Claude Code.~~ Done: the session key in Settings › Accounts.
 - **F-2:** ~~Multiple accounts or organisations.~~ Done in 0.3.0 (§2.4).
 - **F-3:** ~~A local usage history: store snapshots and show a 7-day chart in the popover.~~ Done in 0.2.1.
 - **F-4:** ~~Show the "burn rate" and the projected time to the limit at the current pace.~~ Done in 0.2.1: shown only when the limit would be hit before it resets.
 - **F-5:** A Raycast extension, an Übersicht widget, or an iOS companion that reads the same data.
 - **F-6:** Distribution and updates. **Done without Sparkle:** in-app updates (`UpdateInstaller`), a personal Homebrew tap (`Faithful-developer/homebrew-tap`, bumped by `scripts/release.sh`) and `scripts/install.sh`. **Open:** the main `homebrew/cask` tap and a warning-free first launch both need Developer ID signing and notarization.
+- **F-7:** ~~Plans without a session limit (Ultra, 2026-10-30).~~ Done in 0.4.0 (§2.7, §3.8).

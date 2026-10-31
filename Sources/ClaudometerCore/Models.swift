@@ -171,9 +171,12 @@ public struct UsageSnapshot: Codable, Hashable, Sendable {
     public var weekly: LimitWindow? { windows.first { $0.id == "weekly_all" } ?? windows.first { $0.group == .weekly } }
     public var highest: LimitWindow? { windows.max { $0.utilization < $1.utilization } }
 
+    /// The limit a metric shows (TZ FR-31). Plans without a 5-hour session window (verified
+    /// Ultra, TZ §2.7) show the weekly limit for "Session": always the same limit, unlike
+    /// "Highest", which can change as usage moves.
     public func window(for metric: MenuBarMetric) -> LimitWindow? {
         switch metric {
-        case .session: return session ?? highest
+        case .session: return session ?? weekly ?? highest
         case .weekly: return weekly ?? highest
         case .highest: return highest
         }
@@ -366,6 +369,13 @@ public struct UsageState: Codable, Hashable, Sendable {
     }
 
     public var isStale: Bool { snapshot != nil && error != nil }
+
+    /// The data has limits but no 5-hour session window: a plan without one (verified Ultra,
+    /// TZ §2.7), not an error. False while something needs fixing first (signed out, expired).
+    public var hasNoSessionLimit: Bool {
+        guard let snapshot, !snapshot.windows.isEmpty, snapshot.session == nil else { return false }
+        return error?.needsUserAction != true
+    }
 
     public func projected(at now: Date) -> UsageState {
         UsageState(snapshot: snapshot?.projected(at: now), error: error)

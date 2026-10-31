@@ -119,7 +119,10 @@ struct GeneralSettings: View {
         Binding(
             get: { MenuBarPins.decode(pinned).contains(id) },
             set: { on in
-                var ids = MenuBarPins.decode(pinned).filter { $0 != id }
+                // Keep only limits listed here: pins on a limit that's gone or is now the main
+                // one (no session window, TZ §2.7) would otherwise slip past the two-pin cap.
+                let listed = Set(addableWindows?.map(\.id) ?? [])
+                var ids = MenuBarPins.decode(pinned).filter { $0 != id && listed.contains($0) }
                 if on { ids.append(id) }
                 pinned = MenuBarPins.encode(ids)
             }
@@ -186,7 +189,14 @@ struct GeneralSettings: View {
             } header: {
                 Text(tr("Menu Bar"))
             } footer: {
-                FormNote(tr("Always show up to two limits. Other limits get a ring when they reach this level, up to three rings in all."))
+                VStack(alignment: .leading, spacing: 6) {
+                    // TZ FR-32: why "Session (5h)" shows the weekly limit on this account.
+                    if metric == MenuBarMetric.session.rawValue, store.state.hasNoSessionLimit,
+                       store.state.snapshot?.window(for: .session)?.id == "weekly_all" {
+                        FormNote(tr("This account has no 5-hour session limit, so Weekly (all models) is shown."))
+                    }
+                    FormNote(tr("Always show up to two limits. Other limits get a ring when they reach this level, up to three rings in all."))
+                }
             }
 
             Section {
@@ -435,14 +445,15 @@ private struct AddedAccountSection: View {
         .onChange(of: state) { model.reload() }
     }
 
-    /// "Max plan · Session 42%", or what's wrong.
+    /// "Max plan · Session 42%" ("Ultra plan · Weekly 41%" without a session limit), or what's wrong.
     static func status(_ state: UsageState) -> String {
         if let error = state.error {
             return state.snapshot == nil ? error.shortReason : tr("%@ (last known)", error.shortReason)
         }
         guard let snapshot = state.snapshot else { return tr("Connecting…") }
         return [Formatters.planName(snapshot.plan).map { tr("%@ plan", $0) },
-                snapshot.session.map { tr("Session %@", Formatters.percent($0.utilization)) }]
+                snapshot.session.map { tr("Session %@", Formatters.percent($0.utilization)) }
+                    ?? snapshot.weekly.map { tr("Weekly %@", Formatters.percent($0.utilization)) }]
             .compactMap { $0 }.joined(separator: " · ")
     }
 }
@@ -618,9 +629,10 @@ final class SessionKeyModel: ObservableObject {
         }
     }
 
-    /// "Works · Max plan · Session 42%".
+    /// "Works · Max plan · Session 42%", or "… · Weekly 41%" without a session limit.
     static func works(_ snapshot: UsageSnapshot) -> String {
-        let session = snapshot.session.map { tr(" · Session %@", Formatters.percent($0.utilization)) } ?? ""
+        let session = snapshot.session.map { tr(" · Session %@", Formatters.percent($0.utilization)) }
+            ?? snapshot.weekly.map { tr(" · Weekly %@", Formatters.percent($0.utilization)) } ?? ""
         let plan = Formatters.planName(snapshot.plan).map { " · " + tr("%@ plan", $0) } ?? ""
         return tr("Works") + plan + session
     }

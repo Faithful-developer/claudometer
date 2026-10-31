@@ -172,6 +172,10 @@
 "Status" = "Состояние";
 "Connecting…" = "Подключение…";
 "Session %@" = "Сессия %@";
+"Weekly %@" = "Неделя %@";
+" · Weekly %@" = " · Неделя %@";
+"No 5-hour session limit on this plan" = "На этом плане нет 5‑часового лимита сессии";
+"This account has no 5-hour session limit, so Weekly (all models) is shown." = "У этого аккаунта нет 5‑часового лимита сессии, поэтому показан лимит «Неделя (все модели)».";
 "New key" = "Новый ключ";
 "Replace Key…" = "Заменить ключ…";
 "Remove Account…" = "Удалить аккаунт…";

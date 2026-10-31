@@ -13,7 +13,7 @@ enum PreviewRenderer {
         let dir = URL(fileURLWithPath: args.count > index + 1 ? args[index + 1] : "previews", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
-        // `--sample high|rings|pinned|stale|expired|signedout|accounts` renders made-up states for design review.
+        // `--sample high|rings|pinned|ultra|stale|expired|signedout|accounts` renders made-up states for design review.
         let sample = args.firstIndex(of: "--sample").flatMap { args.count > $0 + 1 ? args[$0 + 1] : nil }
         // `--language ru` renders in that language, from the repo's strings.
         let language = args.firstIndex(of: "--language").flatMap { args.count > $0 + 1 ? args[$0 + 1] : nil }
@@ -25,6 +25,7 @@ enum PreviewRenderer {
         switch sample {
         case "high": initial = highSample
         case "rings": initial = ringsSample
+        case "ultra": initial = ultraSample
         case "pinned":
             initial = pinnedSample
             // The argument domain is volatile, so the user's own settings stay untouched.
@@ -184,11 +185,11 @@ enum PreviewRenderer {
     }
 
     /// A made-up week for samples with data: the weekly limit climbing day by day since its
-    /// reset five days ago, and the session rising fast over the last hour, so the usage per
-    /// day and the pace forecast both show. Empty for the others (real history isn't read).
+    /// reset five days ago, and the session (if any) rising fast over the last hour, so the usage
+    /// per day and the pace forecast both show. Empty for the others (real history isn't read).
     private static func sampleHistory(_ state: UsageState?) -> UsageHistory {
-        guard let snapshot = state?.snapshot, let weekly = snapshot.weekly, let session = snapshot.session,
-              let weeklyReset = weekly.resetsAt, let sessionReset = session.resetsAt else { return UsageHistory() }
+        guard let snapshot = state?.snapshot, let weekly = snapshot.weekly,
+              let weeklyReset = weekly.resetsAt else { return UsageHistory() }
         let fetched = snapshot.fetchedAt
         let weekStart = weeklyReset.addingTimeInterval(-7 * 86400)
         var samples: [UsageHistory.Sample] = []
@@ -208,11 +209,12 @@ enum PreviewRenderer {
                 samples.append(.init(t: t, u: [weekly.id: min(used, weekly.utilization)], r: [weekly.id: weeklyReset]))
             }
         }
-        // The session over the last hour.
+        // The session over the last hour, or just the weekly limit without one.
+        let session = snapshot.session.flatMap { window in window.resetsAt.map { (id: window.id, reset: $0) } }
         for (minutes, value) in [(60.0, 78.0), (45, 81), (30, 85), (15, 88)] {
-            samples.append(.init(t: fetched.addingTimeInterval(-minutes * 60),
-                                 u: [session.id: value, weekly.id: weekly.utilization - 1],
-                                 r: [session.id: sessionReset, weekly.id: weeklyReset]))
+            var u = [weekly.id: weekly.utilization - 1], r = [weekly.id: weeklyReset]
+            if let session { u[session.id] = value; r[session.id] = session.reset }
+            samples.append(.init(t: fetched.addingTimeInterval(-minutes * 60), u: u, r: r))
         }
         return UsageHistory(samples: samples.sorted { $0.t < $1.t })
     }
@@ -245,6 +247,23 @@ enum PreviewRenderer {
                 LimitWindow(id: "weekly_scoped:Fable", group: .weekly, title: "Weekly · Fable", utilization: 88, resetsAt: now.addingTimeInterval(2 * 86400)),
             ],
             plan: "max",
+            fetchedAt: now.addingTimeInterval(-60)
+        ))
+    }
+
+    /// A verified Ultra account: no 5-hour session window, only weekly limits (TZ §2.7).
+    private static var ultraSample: UsageState {
+        let now = Date()
+        return UsageState(snapshot: UsageSnapshot(
+            windows: [
+                LimitWindow(id: "weekly_all", group: .weekly, title: "Weekly · all models", utilization: 41, resetsAt: now.addingTimeInterval(2 * 86400)),
+                LimitWindow(id: "weekly_scoped:Fable", group: .weekly, title: "Weekly · Fable", utilization: 57, resetsAt: now.addingTimeInterval(2 * 86400)),
+            ],
+            breakdown: [
+                BreakdownRow(key: "claude_code", title: "Claude Code", percent: 72),
+                BreakdownRow(key: "chat", title: "Chats", percent: 28),
+            ],
+            plan: "ultra",
             fetchedAt: now.addingTimeInterval(-60)
         ))
     }

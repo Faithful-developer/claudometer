@@ -199,7 +199,9 @@ public struct UsageWidgetContent: View {
 
     private func large(_ snapshot: UsageSnapshot) -> some View {
         let hero = snapshot.window(for: style.metric)
-        let others = Array(snapshot.windows.filter { $0.id != hero?.id }.prefix(3))
+        let noSessionCaption = !isStale && state.hasNoSessionLimit
+        // The caption takes about one row's height, so one fewer row keeps the card's size.
+        let others = Array(snapshot.windows.filter { $0.id != hero?.id }.prefix(noSessionCaption ? 2 : 3))
         let level = style.level(hero)
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
@@ -232,6 +234,14 @@ public struct UsageWidgetContent: View {
                 }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(Formatters.accessibilityLabel(hero, level: level, stale: isStale, now: now))
+                if noSessionCaption {
+                    // Why there's no session ring, as in the popover (TZ FR-34).
+                    Text(tr("No 5-hour session limit on this plan"))
+                        .font(.system(size: 10))
+                        .foregroundStyle(Ink.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.9)
+                }
             }
             if !others.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {

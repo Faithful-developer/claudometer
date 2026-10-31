@@ -297,6 +297,106 @@ private func json(_ string: String) -> Data { Data(string.utf8) }
     }
 }
 
+/// Plans without a 5-hour session window: verified Ultra accounts (TZ §2.7, §3.8).
+@Suite struct NoSessionLimitTests {
+    let reset = Date(timeIntervalSince1970: 1_800_000_000)
+
+    private func ultra() throws -> UsageSnapshot { try UsageDecoder.decode(fixture("sample-usage-ultra")) }
+
+    @Test func decodesUltraSampleWithoutApiChanged() throws {
+        let snapshot = try ultra()
+        #expect(snapshot.windows.map(\.id) == ["weekly_all", "weekly_scoped:Fable"])
+        #expect(snapshot.session == nil)
+        #expect(snapshot.breakdown.isEmpty == false)
+    }
+
+    /// "Session" shows the weekly limit, not the highest one (TZ FR-31).
+    @Test func sessionMetricFallsBackToWeekly() throws {
+        let snapshot = try ultra()
+        #expect(snapshot.highest?.id == "weekly_scoped:Fable")
+        #expect(snapshot.window(for: .session)?.id == "weekly_all")
+        #expect(snapshot.window(for: .weekly)?.id == "weekly_all")
+        #expect(snapshot.window(for: .highest)?.id == "weekly_scoped:Fable")
+        // Only model limits: the first weekly one.
+        let models = UsageSnapshot(windows: snapshot.windows.filter { $0.id != "weekly_all" })
+        #expect(models.window(for: .session)?.id == "weekly_scoped:Fable")
+        // Unknown limits only: the highest.
+        let other = UsageSnapshot(windows: [LimitWindow(id: "monthly", group: .other, title: "Monthly", utilization: 3, resetsAt: nil)])
+        #expect(other.window(for: .session)?.id == "monthly")
+    }
+
+    /// The weekly ring is the main one, so pinning it doesn't repeat it, and a pin on the gone
+    /// session is skipped (TZ FR-28).
+    @Test func menuBarDoesNotRepeatTheResolvedLimit() throws {
+        let snapshot = try ultra()
+        let rings = snapshot.menuBarWindows(metric: .session, pinned: ["weekly_all", "session"], extraThreshold: 80)
+        #expect(rings.primary?.id == "weekly_all")
+        #expect(rings.extras.isEmpty)
+        let both = snapshot.menuBarWindows(metric: .session, pinned: ["weekly_all", "weekly_scoped:Fable"], extraThreshold: nil)
+        #expect(both.extras.map(\.id) == ["weekly_scoped:Fable"])
+    }
+
+    @Test func noSessionLimitState() throws {
+        let ultra = try ultra()
+        let normal = try UsageDecoder.decode(fixture("sample-usage"))
+        #expect(UsageState(snapshot: ultra).hasNoSessionLimit)
+        #expect(UsageState(snapshot: ultra, error: .offline).hasNoSessionLimit)
+        // Not while the user has to fix something first.
+        #expect(!UsageState(snapshot: ultra, error: .tokenExpired).hasNoSessionLimit)
+        #expect(!UsageState(snapshot: normal).hasNoSessionLimit)
+        #expect(!UsageState(error: .notSignedIn).hasNoSessionLimit)
+        #expect(!UsageState(snapshot: UsageSnapshot(windows: [])).hasNoSessionLimit)
+    }
+
+    @Test func ultraOrganizationPlan() {
+        #expect(ClaudeWebClient.plan(from: ["capabilities": ["chat", "claude_ultra"]]) == "ultra")
+        #expect(ClaudeWebClient.plan(from: ["capabilities": ["chat", "claude_max", "claude_ultra"]]) == "ultra")
+        #expect(Formatters.planName("ultra") == "Ultra")
+    }
+
+    /// AC-12 with the real responses: a normal account, then the same one verified as Ultra.
+    /// Both decode (no E-7, so no "Usage stops updating"), and no alert fires.
+    @Test func normalThenUltraResponseIsQuiet() throws {
+        var tracker = ThresholdTracker()
+        var outage = OutageTracker()
+        let normal = try UsageDecoder.decode(fixture("sample-usage"))
+        let ultra = try ultra()
+        #expect(normal.session != nil)
+        #expect(tracker.evaluate(normal, thresholds: [80, 95], notifyReset: true).isEmpty)
+        #expect(outage.record(error: nil) == nil)
+        #expect(tracker.evaluate(ultra, thresholds: [80, 95], notifyReset: true).isEmpty)
+        #expect(outage.record(error: nil) == nil)
+        #expect(outage.failingSince == nil)
+    }
+
+    /// The session window going away (verification done) is neither a reset nor an outage (TZ FR-35, AC-12).
+    @Test func sessionWindowDisappearingIsQuiet() throws {
+        var tracker = ThresholdTracker()
+        let weekly = LimitWindow(id: "weekly_all", group: .weekly, title: "Weekly · all models", utilization: 20, resetsAt: reset.addingTimeInterval(2 * 86400))
+        let session = LimitWindow(id: "session", group: .session, title: "Session (5h)", utilization: 96, resetsAt: reset)
+        let before = UsageSnapshot(windows: [session, weekly], fetchedAt: reset.addingTimeInterval(-3600))
+        #expect(tracker.evaluate(before, thresholds: [80, 95], notifyReset: true).count == 1)
+        let after = UsageSnapshot(windows: [weekly], fetchedAt: reset.addingTimeInterval(-1800))
+        #expect(tracker.evaluate(after, thresholds: [80, 95], notifyReset: true).isEmpty)
+        // Long after the old session would have reset: still nothing.
+        let later = UsageSnapshot(windows: [weekly], fetchedAt: reset.addingTimeInterval(6 * 3600))
+        #expect(tracker.evaluate(later, thresholds: [80, 95], notifyReset: true).isEmpty)
+    }
+
+    /// A weekly hero gets a forecast from weekly readings alone.
+    @Test func weeklyForecastWithoutSessionSamples() {
+        let weeklyReset = reset.addingTimeInterval(2 * 86400)
+        let history = UsageHistory(samples: [
+            .init(t: reset.addingTimeInterval(-20 * 3600), u: ["weekly_all": 40], r: ["weekly_all": weeklyReset]),
+            .init(t: reset.addingTimeInterval(-10 * 3600), u: ["weekly_all": 60], r: ["weekly_all": weeklyReset]),
+        ])
+        // 40 points in 20 hours from 80%: the limit in 10 hours, before the reset in two days.
+        let window = LimitWindow(id: "weekly_all", group: .weekly, title: "", utilization: 80, resetsAt: weeklyReset)
+        let limit = history.forecast(for: window, at: reset)
+        #expect(limit.map { abs($0.timeIntervalSince(reset.addingTimeInterval(10 * 3600))) < 1 } == true)
+    }
+}
+
 @Suite struct StoreTests {
     @Test func roundTrip() throws {
         let url = FileManager.default.temporaryDirectory

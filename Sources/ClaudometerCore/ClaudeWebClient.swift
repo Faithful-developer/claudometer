@@ -71,6 +71,7 @@ public actor ClaudeWebClient {
 
     static func plan(from org: [String: Any]) -> String? {
         let capabilities = (org["capabilities"] as? [String]) ?? []
+        if capabilities.contains("claude_ultra") { return "ultra" }
         if capabilities.contains("claude_max") { return "max" }
         if capabilities.contains("claude_pro") { return "pro" }
         return nil

@@ -89,6 +89,13 @@ struct PopoverView: View {
                     HeroRow(window: hero, level: level(hero), stale: stale, now: now, forecast: forecast(hero))
                 }
                 .padding(.horizontal, 14).padding(.vertical, 8)
+                if store.state.hasNoSessionLimit {
+                    // Says why there's no session ring, so it doesn't look like missing data (TZ FR-33).
+                    Text(tr("No 5-hour session limit on this plan"))
+                        .font(.system(size: 11))
+                        .foregroundStyle(Ink.secondary)
+                        .padding(.horizontal, 14).padding(.bottom, 8)
+                }
             } else if store.state.error == nil {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)

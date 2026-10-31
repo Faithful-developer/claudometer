@@ -17,6 +17,7 @@ $B --render-previews review/renders                     # live cached data
 $B --render-previews review/renders --sample high       # warning + critical
 $B --render-previews review/renders --sample rings      # two other limits high: automatic rings
 $B --render-previews review/renders --sample pinned     # weekly and Fable added to the menu bar
+$B --render-previews review/renders --sample ultra      # no 5-hour session limit (verified Ultra)
 $B --render-previews review/renders --sample stale      # offline, last known data
 $B --render-previews review/renders --sample signedout  # no login
 ```
