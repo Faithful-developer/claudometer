@@ -180,7 +180,7 @@ enum UsageState: Codable {
 
 ### 3.4 Polling
 - **FR-15:** The app fetches once at launch, then repeats every N minutes. N defaults to 5 and can be set from 1 to 30.
-- **FR-16:** On error, the app backs off exponentially: 1 → 2 → 4 → 8 → 15 min (cap), then returns to normal after a success. When the server returns HTTP 429 with a `Retry-After` header, the app waits at least that long.
+- **FR-16:** On error, the app backs off exponentially: 1 → 2 → 4 → 8 → 15 min (cap), then returns to normal after a success. When the server returns HTTP 429 with a `Retry-After` header, the app waits at least that long. A 429 from the Claude Code route is first retried through the claude.ai backup key (§2.3), if one is saved; if that fails too, the original 429 is shown.
 - **FR-17:** Polling pauses while the Mac sleeps and an immediate fetch runs on wake (`NSWorkspace.didWakeNotification`). The app also fetches immediately when the network comes back (`NWPathMonitor`).
 - **FR-18:** Clicking Refresh fetches immediately. Repeated clicks are debounced to one fetch every 10 s.
 
@@ -475,6 +475,7 @@ A response with weekly windows but no session window is **not** E-7. It is the n
 - **0.3.0 (2026-10-19):** multiple accounts (F-2, §2.4).
 - **0.3.1 (2026-10-23):** hover a day in the weekly chart to see its weekday and share.
 - **0.4.0 (2026-10-31):** plans without a session limit (F-7, §2.7, §3.8).
+- **0.4.1 (2026-11-05):** a rate limit (429) on the Claude Code route falls back to the claude.ai backup key (FR-16).
 
 ---
 

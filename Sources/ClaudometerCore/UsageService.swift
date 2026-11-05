@@ -5,7 +5,8 @@ import Foundation
 ///
 /// For the Claude Code account, Claude Code's login comes first. When it is missing or expired
 /// (Claude Code only refreshes it while running) and a claude.ai session key is saved as its
-/// backup, the claude.ai web API is used instead.
+/// backup, the claude.ai web API is used instead. It also covers a rate limit (HTTP 429) on
+/// the Claude Code route, which has its own budget separate from claude.ai's.
 public struct UsageService: Sendable {
     private let credentials: CredentialsProvider
     private let client: UsageAPIClient
@@ -40,8 +41,14 @@ public struct UsageService: Sendable {
             return try await client.fetchUsage(token: creds.accessToken).withPlan(creds.plan).withSource(.claudeCode)
         } catch let error as AppError where error.allowsWebFallback {
             guard let key = backup.loadForPolling() else { throw error }
-            let snapshot = try await web.fetchUsage(sessionKey: key, orgUUID: account.orgUUID)
-            return snapshot.plan == nil ? snapshot.withPlan(plan) : snapshot
+            do {
+                let snapshot = try await web.fetchUsage(sessionKey: key, orgUUID: account.orgUUID)
+                return snapshot.plan == nil ? snapshot.withPlan(plan) : snapshot
+            } catch let webError as AppError {
+                // Keep the Retry-After of the first 429 rather than the web route's own error.
+                if case .rateLimited = error { throw error }
+                throw webError
+            }
         }
     }
 
@@ -67,10 +74,10 @@ public struct UsageService: Sendable {
 }
 
 extension AppError {
-    /// Claude Code login problems that the claude.ai session key can stand in for.
+    /// Claude Code login problems, or a rate limit on its endpoint, that the claude.ai session key can stand in for.
     var allowsWebFallback: Bool {
         switch self {
-        case .tokenExpired, .notSignedIn, .keychainDenied: return true
+        case .tokenExpired, .notSignedIn, .keychainDenied, .rateLimited: return true
         default: return false
         }
     }

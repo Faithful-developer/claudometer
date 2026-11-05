@@ -445,7 +445,7 @@ private func json(_ string: String) -> Data { Data(string.utf8) }
         #expect(AppError.tokenExpired.allowsWebFallback)
         #expect(AppError.notSignedIn.allowsWebFallback)
         #expect(!AppError.offline.allowsWebFallback)
-        #expect(!AppError.rateLimited(retryAfter: nil).allowsWebFallback)
+        #expect(AppError.rateLimited(retryAfter: nil).allowsWebFallback)
     }
 
     @Test func expiredTokenRetriesWithinAMinute() {
