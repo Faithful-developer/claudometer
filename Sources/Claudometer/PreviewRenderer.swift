@@ -13,7 +13,8 @@ enum PreviewRenderer {
         let dir = URL(fileURLWithPath: args.count > index + 1 ? args[index + 1] : "previews", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
-        // `--sample high|rings|pinned|ultra|stale|expired|signedout|accounts` renders made-up states for design review.
+        // `--sample high|rings|pinned|ultra|stale|expired|signedout|accounts|loading|update|old`
+        // renders made-up states for design review.
         let sample = args.firstIndex(of: "--sample").flatMap { args.count > $0 + 1 ? args[$0 + 1] : nil }
         // `--language ru` renders in that language, from the repo's strings.
         let language = args.firstIndex(of: "--language").flatMap { args.count > $0 + 1 ? args[$0 + 1] : nil }
@@ -36,8 +37,17 @@ enum PreviewRenderer {
         case "expired": initial = UsageState(snapshot: highSample.snapshot, error: .tokenExpired)
         case "signedout": initial = UsageState(error: .notSignedIn)
         case "accounts": initial = highSample
+        // Before the first reading: no data and no error yet.
+        case "loading": initial = UsageState()
+        // The popover's update row.
+        case "update": initial = highSample
+        // Data two hours old without an error, e.g. polling that stalled.
+        case "old": initial = oldSample
         default: initial = nil
         }
+        let updates = sample == "update"
+            ? UpdateStore(preview: AppRelease(version: "9.9.9", pageURL: UpdateChecker.releasesPage))
+            : UpdateStore()
         let seeds: [UsageStore.Seed]
         if sample == "accounts" {
             seeds = accountsSample
@@ -71,7 +81,7 @@ enum PreviewRenderer {
 
             let view = PopoverView()
                 .environment(store)
-                .environment(UpdateStore())
+                .environment(updates)
                 .background(Palette.canvas)
                 .environment(\.colorScheme, name == "dark" ? .dark : .light)
                 .environment(\.isPreviewRender, true)
@@ -112,7 +122,7 @@ enum PreviewRenderer {
             for (tab, content) in tabs {
                 let page = content
                     .environment(store)
-                    .environment(UpdateStore())
+                    .environment(updates)
                     .background(Palette.canvas)
                 if let image = snapshot(page, width: 460, appearance: appearance) {
                     write(image, scale: pixelScale, to: dir.appendingPathComponent("settings-\(tab)-\(name)\(suffix(sample, language)).png"))
@@ -122,22 +132,17 @@ enum PreviewRenderer {
             let settings = AppSettings.current
             let style = WidgetStyle(metric: settings.menuBarMetric, warning: settings.warningThreshold, critical: settings.criticalThreshold)
             for size in WidgetSize.allCases {
-                // Mimics the desktop widget chrome: 16pt content margins, continuous corners.
                 let hero = store.state.snapshot?.window(for: style.metric)
                 let forecast = size == .large && store.state.error == nil
                     ? hero.flatMap { store.history.forecast(for: $0, at: store.state.snapshot!.fetchedAt) } : nil
                 let widget = UsageWidgetContent(size: size, state: store.state, now: Date(), style: style, forecast: forecast, refreshControl: AnyView(RefreshGlyph()),
                                                 account: store.hasManyAccounts ? store.selected.title : nil)
-                    .padding(16)
-                    .frame(width: size.size.width, height: size.size.height)
-                    .background(Palette.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                    .padding(12)
-                    .environment(\.colorScheme, name == "dark" ? .dark : .light)
-                let widgetRenderer = ImageRenderer(content: widget)
-                widgetRenderer.scale = pixelScale
-                if let image = widgetRenderer.nsImage {
-                    write(image, scale: pixelScale, to: dir.appendingPathComponent("widget-\(size.rawValue)-\(name)\(suffix(sample, language)).png"))
+                writeWidget(widget, size: size, dark: name == "dark",
+                            to: dir.appendingPathComponent("widget-\(size.rawValue)-\(name)\(suffix(sample, language)).png"))
+                // A widget whose account was removed in the app.
+                if sample == "accounts" {
+                    writeWidget(WidgetAccountRemoved(), size: size, dark: name == "dark",
+                                to: dir.appendingPathComponent("widget-\(size.rawValue)-\(name)-removed\(suffix(nil, language)).png"))
                 }
             }
         }
@@ -148,6 +153,20 @@ enum PreviewRenderer {
     /// Output pixels per point. `image.size` is in points, so writing at 1 threw away the
     /// renderer's extra resolution and produced blurry screenshots.
     private static let pixelScale: CGFloat = 3
+
+    /// Mimics the desktop widget chrome: 16pt content margins, continuous corners.
+    private static func writeWidget<V: View>(_ content: V, size: WidgetSize, dark: Bool, to url: URL) {
+        let widget = content
+            .padding(16)
+            .frame(width: size.size.width, height: size.size.height)
+            .background(Palette.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .padding(12)
+            .environment(\.colorScheme, dark ? .dark : .light)
+        let renderer = ImageRenderer(content: widget)
+        renderer.scale = pixelScale
+        if let image = renderer.nsImage { write(image, scale: pixelScale, to: url) }
+    }
 
     private static func suffix(_ sample: String?, _ language: String?) -> String {
         [sample, language].compactMap { $0.map { "-\($0)" } }.joined()
@@ -234,6 +253,15 @@ enum PreviewRenderer {
             ],
             plan: "pro",
             fetchedAt: now.addingTimeInterval(-120)
+        ))
+    }
+
+    /// The `high` figures, read two hours ago with no error since.
+    private static var oldSample: UsageState {
+        guard let high = highSample.snapshot else { return UsageState() }
+        return UsageState(snapshot: UsageSnapshot(
+            windows: high.windows, breakdown: high.breakdown, plan: high.plan,
+            fetchedAt: Date().addingTimeInterval(-2 * 3600)
         ))
     }
 

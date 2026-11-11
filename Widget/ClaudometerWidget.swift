@@ -145,15 +145,7 @@ struct WidgetView: View {
         // Same language as the app, even when it differs from the macOS one.
         let _ = L10n.resolve(style.language)
         if entry.accountRemoved {
-            VStack(spacing: 6) {
-                Image(systemName: "person.crop.circle.badge.questionmark")
-                    .font(.title2).foregroundStyle(Ink.secondary)
-                Text(tr("Account removed"))
-                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(Ink.primary)
-                Text(tr("Edit the widget to choose another."))
-                    .font(.caption).foregroundStyle(Ink.secondary)
-            }
-            .multilineTextAlignment(.center)
+            WidgetAccountRemoved()
         } else {
             content(style)
         }

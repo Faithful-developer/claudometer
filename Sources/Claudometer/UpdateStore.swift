@@ -36,6 +36,11 @@ final class UpdateStore {
     @ObservationIgnored private let checker = UpdateChecker()
     @ObservationIgnored private var task: Task<Void, Never>?
 
+    /// `preview` shows a release as available without checking, for `--render-previews --sample update`.
+    init(preview: AppRelease? = nil) {
+        available = preview
+    }
+
     static var currentVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
     }

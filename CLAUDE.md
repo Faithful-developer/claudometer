@@ -14,7 +14,7 @@ macOS menu bar app + WidgetKit widget showing Claude plan usage limits. Spec: `T
 ### Quick Visual Check
 Immediately after any UI change:
 1. Identify the changed views (popover, menu bar icon, widgets, settings).
-2. Render them: `B=$(swift build --show-bin-path)/Claudometer; $B --render-previews review/renders [--sample high|rings|pinned|ultra|stale|expired|signedout] [--language ru]`
+2. Render them: `B=$(swift build --show-bin-path)/Claudometer; $B --render-previews review/renders [--sample high|rings|pinned|ultra|stale|expired|signedout|accounts|loading|update|old] [--language ru]`
 3. Read the PNGs and compare them against the two context docs.
 4. Check light and dark, and every affected state.
 

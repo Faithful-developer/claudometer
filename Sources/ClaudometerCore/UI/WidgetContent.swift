@@ -352,3 +352,20 @@ public struct RefreshGlyph: View {
             .accessibilityLabel(tr("Refresh"))
     }
 }
+
+/// The widget's account was removed in the app. Shared so `--render-previews` can draw it.
+public struct WidgetAccountRemoved: View {
+    public init() {}
+
+    public var body: some View {
+        VStack(spacing: 6) {
+            Image(systemName: "person.crop.circle.badge.questionmark")
+                .font(.title2).foregroundStyle(Ink.secondary)
+            Text(tr("Account removed"))
+                .font(.system(size: 12, weight: .semibold)).foregroundStyle(Ink.primary)
+            Text(tr("Edit the widget to choose another."))
+                .font(.caption).foregroundStyle(Ink.secondary)
+        }
+        .multilineTextAlignment(.center)
+    }
+}

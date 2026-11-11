@@ -19,10 +19,23 @@ $B --render-previews review/renders --sample rings      # two other limits high:
 $B --render-previews review/renders --sample pinned     # weekly and Fable added to the menu bar
 $B --render-previews review/renders --sample ultra      # no 5-hour session limit (verified Ultra)
 $B --render-previews review/renders --sample stale      # offline, last known data
+$B --render-previews review/renders --sample expired    # Claude Code login expired, last known data
 $B --render-previews review/renders --sample signedout  # no login
+$B --render-previews review/renders --sample accounts   # four accounts, one key invalid, a long name; also the "Account removed" widget
+$B --render-previews review/renders --sample loading    # before the first reading
+$B --render-previews review/renders --sample update     # update row in the popover and About
+$B --render-previews review/renders --sample old        # data two hours old, no error
 ```
 
-Each run writes `menubar-{light,dark}`, `popover-{light,dark}` and `widget-{small,medium,large}-{light,dark}` PNGs, with a `-<sample>` suffix. If renders already exist in `review/renders/`, use them. Read every PNG you assess.
+Add `--language ru` to any of these for Russian (run from the repo root; pass `--language en` to avoid the saved language). Check Russian for truncation and overflow against the English render.
+
+Each run writes, with a `-<sample>[-<language>]` suffix and in `light` and `dark`:
+- `menubar-*`, `menubar-compact-*`, `menubar-update-*`
+- `popover-*`, `daily-hover-*` (weekly chart with a day hovered), `copy-*` (the clipboard card)
+- `settings-{general,notifications,login,about}-*`
+- `widget-{small,medium,large}-*`, and `widget-*-removed-*` for the `accounts` sample
+
+If current renders already exist, use them. Read every PNG you assess.
 
 Limits of the renderer: native controls (buttons, sliders) and the NSVisualEffect menu material don't render. Popovers are drawn on the Canvas colour instead. Don't report those as defects; list them under "Needs a manual check".
 
@@ -51,7 +64,7 @@ Limits of the renderer: native controls (buttons, sliders) and the NSVisualEffec
 - Status is never colour alone. Check VoiceOver labels in code (`accessibilityLabel`, `accessibilityElement`).
 
 ### Phase 5: Robustness
-- States: normal, high, stale, signed out. Each must be clear and give a next step.
+- States: normal, high, loading, stale, expired, old data, signed out, several accounts, account removed, update available. Each must be clear and give a next step.
 - Edge cases from code: 0%, over 100%, missing `resetsAt`, unknown limit kinds, long model names.
 
 ### Phase 6: Code health
