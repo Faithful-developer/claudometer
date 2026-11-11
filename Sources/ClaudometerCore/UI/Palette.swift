@@ -11,6 +11,21 @@ public enum Palette {
     /// Light end of the meter fill (palette demo gradient).
     public static let coralLight = dynamic(light: 0xF29A72, dark: 0xE88A68)
     public static let coralSoft = dynamic(light: 0xFCEAE5, dark: 0x3B2520)
+    /// Hover and pressed highlight of popover rows on the canvas. Deeper than `coralSoft`
+    /// (only 1.08:1 vs canvas in light) so the highlight is visible: hover 1.20 / 1.37:1,
+    /// pressed 1.33 / 1.55:1 vs canvas (light / dark). On hover, secondary text is 5.22 / 5.56:1
+    /// and the amber warning glyph 3.12 / 5.78:1. Text on it is primary or secondary, never tertiary.
+    public static let rowHover = dynamic(light: 0xF7DCD3, dark: 0x4D2D24)
+    public static let rowPressed = dynamic(light: 0xF4CFC3, dark: 0x5A3329)
+    /// The same highlight for controls that sit on `track` (account switcher, notice buttons),
+    /// where `rowHover` all but vanished (dark 1.02:1). Hover 1.22 / 1.24:1, pressed 1.30 / 1.30:1
+    /// vs track. Labels on it go primary.
+    public static let trackHover = dynamic(light: 0xF2D2C7, dark: 0x5A3A31)
+    public static let trackPressed = dynamic(light: 0xEFCBBF, dark: 0x5E3D34)
+    /// Fill for last known (stale) data: meters, rings, daily bars and the breakdown, so the
+    /// same state looks the same everywhere. Secondary ink, 5.87 / 5.68:1 vs track; the old
+    /// `seriesOther` grey was under 3:1 there.
+    public static var staleFill: Color { Ink.secondary }
     public static let plum = dynamic(light: 0x51405F, dark: 0x7D539D)
 
     // Surfaces
@@ -58,7 +73,7 @@ public enum Palette {
         case .ok: return coral
         case .warning: return warning
         case .critical: return critical
-        case .unknown: return seriesOther
+        case .unknown: return staleFill
         }
     }
 

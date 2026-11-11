@@ -71,9 +71,10 @@ final class UsageStore {
             accounts = accountStore.load()
             accountsLocked = accountStore.isUnreadable
             for account in accounts {
-                // Show the last known data immediately, greyed out until the first fetch finishes.
-                if var cached = SnapshotStore.default(account: account).load() {
-                    if cached.error == nil, cached.snapshot != nil { cached.error = .offline }
+                // Show the last known data immediately. Old data greys out by its age
+                // (`UsageState.isStale(at:)`) rather than claiming to be offline before the
+                // first fetch has even tried; the footer says "Updating…" meanwhile.
+                if let cached = SnapshotStore.default(account: account).load() {
                     states[account.id] = cached.projected(at: Date())
                 }
                 histories[account.id] = HistoryStore.default(account: account).load()
@@ -90,6 +91,12 @@ final class UsageStore {
 
     var selected: Account { accounts.first { $0.id == selectedID } ?? accounts[0] }
     var state: UsageState { states[selectedID] ?? UsageState() }
+
+    /// `state.isStale(at:)` with the stale limit for the current refresh interval (TZ FR-13).
+    func isStale(at now: Date) -> Bool {
+        let minutes = UserDefaults.standard.integer(forKey: SettingsKey.refreshMinutes)
+        return state.isStale(at: now, maxAge: UsageState.maxAge(refreshMinutes: minutes))
+    }
     var history: UsageHistory { histories[selectedID] ?? UsageHistory() }
     var isLoading: Bool { loading[selectedID] != nil }
     var hasManyAccounts: Bool { accounts.count > 1 }
@@ -339,6 +346,9 @@ final class UsageStore {
 
         do {
             let snapshot = try await service.fetch(account: account)
+            // Restarted while the request was running: the newer fetch reports, so an older
+            // reading can't land after it.
+            if Task.isCancelled { return }
             // Removed while the request was running.
             guard let account = accounts.first(where: { $0.id == id }) else { return }
             record(snapshot, for: account)

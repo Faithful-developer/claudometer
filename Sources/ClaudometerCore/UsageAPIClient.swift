@@ -7,7 +7,7 @@ public struct UsageAPIClient: Sendable {
     private let session: URLSession
     private let userAgent: String
 
-    public init(session: URLSession = .shared, version: String = "0.1") {
+    public init(session: URLSession = .shared, version: String = AppVersion.current) {
         self.session = session
         self.userAgent = "Claudometer/\(version)"
     }
@@ -36,8 +36,7 @@ public struct UsageAPIClient: Sendable {
         case 404:
             throw AppError.apiChanged
         case 429:
-            let retryAfter = http.value(forHTTPHeaderField: "Retry-After").flatMap(TimeInterval.init)
-            throw AppError.rateLimited(retryAfter: retryAfter)
+            throw AppError.rateLimited(retryAfter: RetryAfter.parse(http.value(forHTTPHeaderField: "Retry-After")))
         case 500...599:
             throw AppError.server(status: http.statusCode)
         default:

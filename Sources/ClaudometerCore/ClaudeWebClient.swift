@@ -102,8 +102,7 @@ public actor ClaudeWebClient {
         case 404:
             throw AppError.apiChanged
         case 429:
-            let retryAfter = http.value(forHTTPHeaderField: "Retry-After").flatMap(TimeInterval.init)
-            throw AppError.rateLimited(retryAfter: retryAfter)
+            throw AppError.rateLimited(retryAfter: RetryAfter.parse(http.value(forHTTPHeaderField: "Retry-After")))
         case 500...599:
             throw AppError.server(status: http.statusCode)
         default:

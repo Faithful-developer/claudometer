@@ -86,7 +86,7 @@ final class UpdateStore {
         guard defaults.string(forKey: SettingsKey.notifiedUpdateVersion) != release.version else { return }
         defaults.set(release.version, forKey: SettingsKey.notifiedUpdateVersion)
         guard notify, AppSettings.current.notifyUpdates, NotificationManager.isAvailable else { return }
-        NotificationManager.sendUpdate(release)
+        NotificationManager.sendUpdate(release, canInstall: canInstall)
     }
 
     /// Installs the available update in place and relaunches. On failure the state says why,

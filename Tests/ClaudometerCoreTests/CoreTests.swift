@@ -144,6 +144,12 @@ private func json(_ string: String) -> Data { Data(string.utf8) }
         UsageSnapshot(windows: [LimitWindow(id: "session", group: .session, title: "Session", utilization: value, resetsAt: resetsAt ?? reset)])
     }
 
+    @Test func onlyTheSecondAlertPlaysASound() {
+        #expect(ThresholdTracker.isFinal(90, of: [70, 90]))
+        #expect(!ThresholdTracker.isFinal(70, of: [70, 90]))
+        #expect(ThresholdTracker.isFinal(80, of: [80, 80]))
+    }
+
     @Test func firesOncePerCycle() {
         var tracker = ThresholdTracker()
         #expect(tracker.evaluate(snapshot(50), thresholds: [80, 95], notifyReset: true).isEmpty)
@@ -408,8 +414,90 @@ private func json(_ string: String) -> Data { Data(string.utf8) }
         #expect(loaded.snapshot?.windows.count == 3)
         #expect(loaded.snapshot?.plan == "max")
         #expect(loaded.error == .offline)
-        #expect(loaded.isStale)
+        #expect(loaded.isStale(at: Date()))
         try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
+    }
+
+    @Test func staleByErrorOrAge() {
+        let fetched = Date(timeIntervalSince1970: 1_800_000_000)
+        let snapshot = UsageSnapshot(windows: [LimitWindow(id: "session", group: .session, title: "Session", utilization: 10, resetsAt: nil)], fetchedAt: fetched)
+        let fresh = UsageState(snapshot: snapshot)
+        #expect(!fresh.isStale(at: fetched.addingTimeInterval(10 * 60)))
+        #expect(!fresh.isStale(at: fetched.addingTimeInterval(UsageState.maxAge)))
+        #expect(fresh.isStale(at: fetched.addingTimeInterval(UsageState.maxAge + 1)))
+        #expect(UsageState(snapshot: snapshot, error: .offline).isStale(at: fetched))
+        #expect(!UsageState(error: .notSignedIn).isStale(at: fetched))
+    }
+
+    @Test func staleLimitFollowsRefreshInterval() {
+        #expect(UsageState.maxAge(refreshMinutes: nil) == 35 * 60)
+        #expect(UsageState.maxAge(refreshMinutes: 0) == 35 * 60)
+        #expect(UsageState.maxAge(refreshMinutes: 5) == 35 * 60)
+        #expect(UsageState.maxAge(refreshMinutes: 15) == 35 * 60)
+        #expect(UsageState.maxAge(refreshMinutes: 30) == 45 * 60)
+        let fetched = Date(timeIntervalSince1970: 1_800_000_000)
+        #expect(WidgetStyle(refreshMinutes: 30).staleAt(fetched) == fetched.addingTimeInterval(45 * 60))
+        #expect(WidgetStyle().staleAt(fetched) == fetched.addingTimeInterval(35 * 60))
+    }
+
+    @Test func olderStyleFilesStillDecode() throws {
+        let json = Data(#"{"metric":"session","warning":60,"critical":85,"language":"en"}"#.utf8)
+        let style = try JSONDecoder().decode(WidgetStyle.self, from: json)
+        #expect(style.refreshMinutes == nil)
+    }
+}
+
+@Suite struct WidgetTimelineTests {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    @Test func everyFiveMinutesWithoutResets() {
+        let dates = WidgetTimeline.entryDates(now: now, resets: [], staleAt: nil)
+        #expect(dates.count == 25)
+        #expect(dates.first == now)
+        #expect(dates.last == now.addingTimeInterval(2 * 3600))
+        #expect(zip(dates, dates.dropFirst()).allSatisfy { $1.timeIntervalSince($0) == 300 })
+    }
+
+    @Test func everyMinuteBeforeAReset() {
+        let reset = now.addingTimeInterval(62 * 60 + 30)
+        let dates = WidgetTimeline.entryDates(now: now, resets: [reset, reset], staleAt: nil)
+        #expect(dates.contains(reset))
+        let before = dates.filter { $0 > reset.addingTimeInterval(-15 * 60 - 1) && $0 <= reset }
+        // 15 one-minute steps plus the reset, and no two closer than 5 s.
+        #expect(before.count >= 16)
+        #expect(zip(dates, dates.dropFirst()).allSatisfy { $1.timeIntervalSince($0) >= 5 })
+        #expect(dates == dates.sorted())
+    }
+
+    @Test func resetSoonStartsFromNow() {
+        let reset = now.addingTimeInterval(4 * 60)
+        let dates = WidgetTimeline.entryDates(now: now, resets: [reset], staleAt: nil)
+        #expect(dates.first == now)
+        #expect(dates.contains(reset))
+        #expect(dates.contains(now.addingTimeInterval(60)))
+    }
+
+    @Test func ignoresResetsAndStaleOutsideTheSpan() {
+        let plain = WidgetTimeline.entryDates(now: now, resets: [], staleAt: nil)
+        let dates = WidgetTimeline.entryDates(
+            now: now,
+            resets: [now.addingTimeInterval(-60), now.addingTimeInterval(3 * 86_400)],
+            staleAt: now.addingTimeInterval(-10)
+        )
+        #expect(dates == plain)
+    }
+
+    @Test func includesTheStaleCutOff() {
+        let staleAt = now.addingTimeInterval(33 * 60 + 20)
+        let dates = WidgetTimeline.entryDates(now: now, resets: [], staleAt: staleAt)
+        #expect(dates.contains(staleAt))
+        #expect(dates.count == 26)
+    }
+
+    @Test func staysSmall() {
+        let resets = [now.addingTimeInterval(20 * 60), now.addingTimeInterval(80 * 60), now.addingTimeInterval(110 * 60)]
+        let dates = WidgetTimeline.entryDates(now: now, resets: resets, staleAt: now.addingTimeInterval(35 * 60))
+        #expect(dates.count < 80)
     }
 }
 
@@ -560,13 +648,23 @@ private func json(_ string: String) -> Data { Data(string.utf8) }
         #expect(AppError.offline.recoveries(hasSessionKey: false) == [.tryAgain])
     }
 
-    @Test func dataFromText() {
+    /// With a key saved (and failing too), the message doesn't tell people to add one.
+    @Test func messageKnowsAboutSavedKey() {
+        for error in [AppError.notSignedIn, .tokenExpired] {
+            #expect(error.message(hasSessionKey: false) == error.message)
+            #expect(error.message(hasSessionKey: true) != error.message)
+            #expect(!error.message(hasSessionKey: true).contains("add a claude.ai session key"))
+        }
+        #expect(AppError.offline.message(hasSessionKey: true) == AppError.offline.message)
+    }
+
+    @Test func notUpdatedText() {
         let fetched = start
-        let sameDay = Formatters.dataFromText(fetched, now: fetched.addingTimeInterval(60))
-        let nextDay = Formatters.dataFromText(fetched, now: fetched.addingTimeInterval(2 * 86_400))
+        let sameDay = Formatters.notUpdatedText(fetched, now: fetched.addingTimeInterval(60))
+        let nextDay = Formatters.notUpdatedText(fetched, now: fetched.addingTimeInterval(2 * 86_400))
         let time = fetched.formatted(date: .omitted, time: .shortened)
-        #expect(sameDay == "Showing data from \(time)")
-        #expect(nextDay.hasPrefix("Showing data from "))
+        #expect(sameDay == "Not updated since \(time)")
+        #expect(nextDay.hasPrefix("Not updated since "))
         #expect(nextDay != sameDay && nextDay.hasSuffix(time))
     }
 }

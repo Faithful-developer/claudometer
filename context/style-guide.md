@@ -8,7 +8,12 @@ Source of truth for colours: `docs/palette.html`. Tokens are in `Sources/Claudom
 |---|---|---|---|---|
 | Brand / normal usage | `Palette.coral` | #E76F51 | #D76549 | Meter and ring fill below the warning threshold, brand mark |
 | Meter gradient start | `Palette.coralLight` | #F29A72 | #E88A68 | Light (zero) end of the normal meter gradient; the value end is full coral |
-| Brand tint | `Palette.coralSoft` | #FCEAE5 | #3B2520 | Hover / selected menu rows |
+| Brand tint | `Palette.coralSoft` | #FCEAE5 | #3B2520 | Selected account segment, soft fills |
+| Row hover | `Palette.rowHover` | #F7DCD3 | #4D2D24 | Hovered menu and limit rows on the canvas (1.20 / 1.37:1 vs canvas); text on it is primary or secondary, never tertiary. The hero ring's track steps up to `trackIncreased` and the pace-tick halo takes this colour |
+| Row pressed | `Palette.rowPressed` | #F4CFC3 | #5A3329 | Pressed menu and limit rows |
+| Track hover | `Palette.trackHover` | #F2D2C7 | #5A3A31 | Hover on controls that sit on `track`: account segments, notice buttons (1.22 / 1.24:1 vs track); labels go primary |
+| Track pressed | `Palette.trackPressed` | #EFCBBF | #5E3D34 | Pressed account segments and notice buttons |
+| Stale fill | `Palette.staleFill` | = `Ink.secondary` | = `Ink.secondary` | Every fill for last known data: rings, meters, daily bars, breakdown (5.87 / 5.68:1 vs track). Stale status glyphs are `Ink.secondary` too |
 | Series 2 | `Palette.plum` | #51405F | #7D539D | Chats |
 | Series 3 / success | `Palette.teal` | #278C82 | #00A99C | Cowork, "On track" pill |
 | Warning | `Palette.warning` | #D59A32 | #E2A848 | ≥ warning threshold (default 60%) |

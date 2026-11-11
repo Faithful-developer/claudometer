@@ -22,7 +22,9 @@ public enum Backoff {
             // Needs a new key from the user; Settings → Save & Test restarts polling.
             return interval
         case .rateLimited(let retryAfter?):
-            return max(backoff(failures), retryAfter)
+            // The wait already escalates in `RouteCooldown`; adding backoff on top would push
+            // the retry past it, by up to 15 min after a few manual refreshes.
+            return max(retryAfter, 30)
         default:
             return backoff(failures)
         }
@@ -47,6 +49,11 @@ public enum Backoff {
 /// computes `resets_at` per request, so it drifts by fractions of a second (and across minute
 /// boundaries) between fetches without the limit having reset.
 public struct ThresholdTracker: Codable, Sendable {
+    /// The last alert of a cycle (the user's second threshold), which is the one that plays a sound.
+    public static func isFinal(_ threshold: Int, of thresholds: [Int]) -> Bool {
+        threshold >= (thresholds.max() ?? threshold)
+    }
+
     public enum Event: Hashable, Sendable {
         case crossed(window: LimitWindow, threshold: Int)
         case reset(window: LimitWindow)

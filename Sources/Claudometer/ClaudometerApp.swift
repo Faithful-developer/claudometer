@@ -52,6 +52,9 @@ struct MenuBarLabel: View {
     @Environment(\.openSettings) private var openSettings
     @AppStorage(SettingsKey.menuBarMetric) private var metric = MenuBarMetric.session.rawValue
     @AppStorage(SettingsKey.compactMenuBar) private var compact = false
+    /// Ticks once a minute so the icon greys when the data gets old, not only when the state
+    /// changes. (A `TimelineView` doesn't reliably redraw a `MenuBarExtra` label.)
+    @StateObject private var clock = MinuteClock()
     @AppStorage(SettingsKey.menuBarPinnedLimits) private var pinned = ""
     @AppStorage(SettingsKey.menuBarExtraRings) private var extraRings = true
     @AppStorage(SettingsKey.menuBarExtraThreshold) private var extraThreshold = 80.0
@@ -66,7 +69,8 @@ struct MenuBarLabel: View {
         Image(nsImage: MenuBarIcon.image(
             primary: MenuBarIcon.Ring(window: rings?.primary, level: level(rings?.primary)),
             extras: (rings?.extras ?? []).map { MenuBarIcon.Ring(window: $0, level: level($0), letter: true) },
-            stale: store.state.isStale || store.state.error != nil,
+            // The `|| error` covers an error with no data yet, which `isStale` leaves out.
+            stale: store.isStale(at: clock.now) || store.state.error != nil,
             compact: compact,
             updateBadge: updates.available != nil,
             account: store.hasManyAccounts ? store.selected.title : nil
@@ -77,6 +81,22 @@ struct MenuBarLabel: View {
     private func level(_ window: LimitWindow?) -> UsageLevel {
         UsageLevel.of(window?.utilization, warning: warning, critical: critical)
     }
+}
+
+/// The current time, republished every minute.
+@MainActor
+final class MinuteClock: ObservableObject {
+    @Published private(set) var now = Date()
+    private var timer: Timer?
+
+    init() {
+        timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.now = Date() }
+        }
+        timer?.tolerance = 10
+    }
+
+    deinit { timer?.invalidate() }
 }
 
 /// Handles `claudometer://` links, e.g. a click on the desktop widget (FR-14), and clicks on
@@ -90,6 +110,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             if NotificationManager.isAvailable { UNUserNotificationCenter.current().delegate = self }
             NotificationManager.registerCategories()
         }
+    }
+
+    /// Opening the app again from Finder, Spotlight or Launchpad. There's no Dock icon or window,
+    /// so without this nothing visible happened, which left the app unreachable when its menu
+    /// bar icon is hidden (notch, menu bar managers). Opens the menu, or Settings without one.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        MainActor.assumeIsolated {
+            if !MenuBarMenu.open() { SettingsWindow.open(tab: .general) }
+        }
+        return false
     }
 
     /// Without a delegate, alerts are hidden while the app is active (e.g. Settings is open).

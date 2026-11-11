@@ -23,7 +23,7 @@ A tiny macOS menu bar app (plus a desktop widget) that shows how much of your **
 - *Optional, off by default:* a claude.ai `sessionKey` you paste in yourself (see [claude.ai backup](#optional-claudeai-backup)).
 - *Only when you save a session key:* the organization ID in Claude Code's `~/.claude.json`, to tell whether the key belongs to your Claude Code account or to [another account](#optional-more-accounts). Nothing else in that file is read.
 
-**Sends** a check-in once a day, so the developer can count how many people use Claudometer: a random ID made on your Mac, the app version, language and macOS version. Nothing about your Claude account or usage, and the server stores no IP addresses and deletes rows after 90 days ([`server/checkin`](server/checkin/src/index.js)). To turn it off (this also forgets the ID), run `defaults write dev.claudometer.app sendCheckIn -bool false`.
+**Sends** a check-in once a day, so the developer can count how many people use Claudometer: a random ID made on your Mac, the app version, language and macOS version. Nothing about your Claude account or usage, and the server stores no IP addresses and deletes rows after 90 days ([`server/checkin`](server/checkin/src/index.js)). To turn it off (this also forgets the ID), switch off **Settings → General → Privacy → Send a daily anonymous check-in**.
 
 **Never**
 - Never writes a token or key to disk, `UserDefaults`, logs or the widget's folder. Tokens stay in memory; the optional session key lives only in Claudometer's own Keychain item.
@@ -92,7 +92,7 @@ No Apple developer team is needed. The app and widget share data through `~/Libr
 Claude Code refreshes its login only while it's running, so after about 8 hours with Claude Code closed the token expires and Claudometer shows the last known numbers. If you want usage to stay live anyway, paste your claude.ai `sessionKey` cookie in **Settings → Accounts** and press **Save & Test**.
 
 - **Off by default.** Nothing happens unless you paste a key.
-- Used **only** while Claude Code's login is expired or missing; Claude Code's login always comes first.
+- Used only while Claude Code's login is expired or missing, or while Claude Code's usage check is rate limited (HTTP 429). Claude Code's login always comes first, and after a rate limit it is tried again once the wait is over.
 - Stored only in Claudometer's own Keychain item and sent only to `claude.ai`. **Remove** deletes it.
 - It's your full claude.ai web session and the claude.ai endpoint is also undocumented, so skip this if you're not comfortable with that.
 
@@ -111,7 +111,7 @@ To watch another Claude account too (say a work Team plan next to your personal 
 | Piece | What it does |
 |---|---|
 | `CredentialsProvider` | Reads Claude Code's OAuth token from the Keychain item `Claude Code-credentials` through `/usr/bin/security` (read-only; never stored or logged) |
-| `ClaudeWebClient` | Backup source: claude.ai's usage API with the `sessionKey` cookie you paste in *Settings → Accounts*. For the Claude Code account, used only while its login is expired (Claude Code refreshes it only while running); added accounts always use it |
+| `ClaudeWebClient` | Backup source: claude.ai's usage API with the `sessionKey` cookie you paste in *Settings → Accounts*. For the Claude Code account, used only while its login is expired or missing (Claude Code refreshes it only while running) or its usage check is rate limited; added accounts always use it |
 | `UsageAPIClient` | `GET https://api.anthropic.com/api/oauth/usage` with `anthropic-beta: oauth-2025-04-20` |
 | `UsageDecoder` | Tolerant parsing. Prefers the `limits` array and falls back to the legacy `five_hour` / `seven_day*` keys. Unknown limit kinds are still shown |
 | `UsageStore` | Polls every 5 min by default (1–30). Backs off exponentially on errors (1→2→4→8→15 min), honours `Retry-After`, and refreshes on wake or when the network comes back |

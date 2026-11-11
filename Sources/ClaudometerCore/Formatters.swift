@@ -116,14 +116,10 @@ public enum Formatters {
         }
     }
 
-    /// "Showing data from 14:05" / "Showing data from 10/10/26, 14:05" for stale data.
-    public static func dataFromText(_ fetched: Date, now: Date = Date()) -> String {
-        tr("Showing data from %@", timestamp(fetched, now: now))
-    }
-
-    /// "Out of date · 14:05" for stale data.
-    public static func outOfDateText(_ fetched: Date) -> String {
-        tr("Out of date · %@", time(fetched))
+    /// "Not updated since 14:05" / "Not updated since 10/10/26, 14:05": the one phrase for
+    /// stale data on every surface (popover, widget, copy card, notification).
+    public static func notUpdatedText(_ fetched: Date, now: Date = Date()) -> String {
+        tr("Not updated since %@", timestamp(fetched, now: now))
     }
 }
 

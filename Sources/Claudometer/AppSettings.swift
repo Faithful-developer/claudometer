@@ -27,7 +27,7 @@ enum SettingsKey {
     static let notifyUpdates = "notifyUpdates"
     /// Last release version announced in a notification, so each version alerts once.
     static let notifiedUpdateVersion = "notifiedUpdateVersion"
-    /// Daily check-in (`CheckIn`), on by default and not shown in Settings; the random ID and the last send.
+    /// Daily check-in (`CheckIn`), on by default, switch in Settings › General › Privacy; the random ID and the last send.
     static let sendCheckIn = "sendCheckIn"
     static let checkInID = "checkInID"
     static let checkInLastSent = "checkInLastSent"
@@ -122,7 +122,8 @@ struct AppSettings {
             metric: settings.menuBarMetric,
             warning: settings.warningThreshold,
             critical: settings.criticalThreshold,
-            language: L10n.language
+            language: L10n.language,
+            refreshMinutes: settings.refreshMinutes
         ))
     }
 

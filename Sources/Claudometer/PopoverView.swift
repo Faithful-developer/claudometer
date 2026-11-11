@@ -59,7 +59,7 @@ struct PopoverView: View {
     @ViewBuilder
     private func content(now: Date) -> some View {
         let snapshot = store.state.snapshot
-        let stale = store.state.isStale
+        let stale = store.isStale(at: now)
         let hero = snapshot?.window(for: MenuBarMetric(rawValue: metric) ?? .session)
         let others = snapshot?.windows.filter { $0.id != hero?.id } ?? []
         // Pace forecast from the history, measured up to the reading itself; never on old data.
@@ -72,14 +72,21 @@ struct PopoverView: View {
 
         VStack(alignment: .leading, spacing: 0) {
             if let error = store.state.error {
+                let hasSessionKey = SessionKeyStore(accountID: store.selectedID).hasKey
                 ErrorNotice(
                     error: error,
+                    message: error.message(hasSessionKey: hasSessionKey),
                     staleSince: stale ? snapshot?.fetchedAt : nil,
-                    recoveries: error.recoveries(hasSessionKey: SessionKeyStore(accountID: store.selectedID).hasKey),
+                    recoveries: error.recoveries(hasSessionKey: hasSessionKey),
                     now: now,
                     perform: recover
                 )
                 .padding(.horizontal, 14).padding(.vertical, 6)
+            } else if stale, let fetched = snapshot?.fetchedAt {
+                // Old data with no error (the Mac slept, or refreshes stalled): everything is
+                // grey, so say why here rather than only in the footer.
+                StaleNotice(fetched: fetched, now: now, isLoading: store.isLoading) { store.refresh() }
+                    .padding(.horizontal, 14).padding(.vertical, 6)
             }
 
             if let hero {
@@ -126,7 +133,7 @@ struct PopoverView: View {
             // Usage per day of the weekly limit, once there's more than a day of history.
             if snapshot != nil, store.history.daysWithData(windowId: weeklyId) >= 2 {
                 MenuDivider()
-                DailyUseSection(days: store.history.dailyUse(windowId: weeklyId, now: now))
+                DailyUseSection(days: store.history.dailyUse(windowId: weeklyId, now: now), dimmed: stale)
             }
 
             if let breakdown = snapshot?.breakdown, breakdown.contains(where: { $0.percent > 0 }) {
@@ -147,11 +154,9 @@ struct PopoverView: View {
     private func updateRow(_ release: AppRelease) -> some View {
         switch updates.installState {
         case .downloading(let fraction):
-            MenuRow(title: tr("Downloading Update… %lld%%", Int(fraction * 100)), shortcut: nil) {}
-                .disabled(true)
+            UpdateProgressRow(title: tr("Downloading Update… %lld%%", Int(fraction * 100)), fraction: fraction)
         case .installing:
-            MenuRow(title: tr("Installing Update…"), shortcut: nil) {}
-                .disabled(true)
+            UpdateProgressRow(title: tr("Installing Update…"), fraction: 1)
         case .failed(let message):
             MenuRow(title: tr("Download Update %@…", release.version), shortcut: nil) { updates.openDownload() }
             Text(message)
@@ -181,10 +186,15 @@ struct PopoverView: View {
         VStack(spacing: 0) {
             TimelineView(.periodic(from: .now, by: 30)) { context in
                 Group {
-                    if store.isLoading {
-                        Text(tr("Updating…"))
-                    } else if let fetched = store.state.snapshot?.fetchedAt {
-                        Text(Formatters.updatedText(fetched, now: context.date))
+                    // Without data the "Loading usage…" line already says it; with an error or
+                    // old data the notice says how old it is, and a second "Updated 2 min ago"
+                    // here read as if the last update had worked.
+                    if let fetched = store.state.snapshot?.fetchedAt {
+                        if store.isLoading {
+                            Text(tr("Updating…"))
+                        } else if store.state.error == nil, !store.isStale(at: context.date) {
+                            Text(Formatters.updatedText(fetched, now: context.date))
+                        }
                     }
                 }
                 .font(.system(size: 11))
@@ -228,10 +238,11 @@ struct HeroRow: View {
     let now: Date
     /// When the limit runs out at the current pace, if before the reset.
     var forecast: Date? = nil
+    @Environment(\.isRowHighlighted) private var highlighted
 
     var body: some View {
         HStack(spacing: 14) {
-            RingGauge(fraction: window.utilization / 100, level: stale ? .unknown : level, lineWidth: 7) {
+            RingGauge(fraction: window.utilization / 100, level: stale ? .unknown : level, lineWidth: 7, highlighted: highlighted) {
                 PercentText(window.utilization, size: 18, dimmed: stale)
             }
             .frame(width: 64, height: 64)
@@ -269,6 +280,7 @@ struct LimitRow: View {
     let now: Date
     var forecast: Date? = nil
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.isRowHighlighted) private var highlighted
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -290,12 +302,13 @@ struct LimitRow: View {
                 fraction: window.utilization / 100,
                 level: stale ? .unknown : level,
                 elapsed: window.elapsedFraction(now: now),
-                halo: Palette.canvas
+                // The pace tick's halo matches whatever is behind the row.
+                halo: highlighted ? Palette.rowHover : Palette.canvas
             )
             Text([Formatters.resetText(window.resetsAt, now: now), forecast.map { Formatters.forecastText($0, now: now) }]
                 .compactMap { $0 }.joined(separator: " · "))
                 .font(.system(size: 11))
-                .foregroundStyle(Ink.tertiary(contrast))
+                .foregroundStyle(highlighted ? Ink.secondary : Ink.tertiary(contrast))
                 .lineLimit(2)
         }
         .accessibilityElement(children: .ignore)
@@ -367,9 +380,10 @@ struct CopyableLimitStyle: ButtonStyle {
 
         var body: some View {
             configuration.label
+                .environment(\.isRowHighlighted, hover.isOn)
                 .background {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(hover.isOn ? (configuration.isPressed ? Palette.coral.opacity(0.25) : Palette.coralSoft) : Color.clear)
+                        .fill(hover.isOn ? (configuration.isPressed ? Palette.rowPressed : Palette.rowHover) : Color.clear)
                 }
                 .onHover { hover.isOn = $0 }
         }
@@ -529,16 +543,18 @@ private struct AccountSegmentStyle: ButtonStyle {
 
         var body: some View {
             let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
+            let highlighted = !isSelected && (hover.isOn || configuration.isPressed)
             configuration.label
                 .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
-                .foregroundStyle(isSelected ? Ink.primary : Ink.secondary)
+                .foregroundStyle(isSelected || highlighted ? Ink.primary : Ink.secondary)
                 .background {
+                    // The segments sit on `track`, so they use the track highlight.
                     if isSelected {
                         shape.fill(Palette.surface).overlay(shape.strokeBorder(Palette.border))
                     } else if configuration.isPressed {
-                        shape.fill(Palette.coral.opacity(0.25))
+                        shape.fill(Palette.trackPressed)
                     } else if hover.isOn {
-                        shape.fill(Palette.coralSoft)
+                        shape.fill(Palette.trackHover)
                     }
                 }
                 .onHover { hover.isOn = $0 }
@@ -570,12 +586,13 @@ struct MenuRowLabel: View {
     let title: String
     let shortcut: String?
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.isRowHighlighted) private var highlighted
 
     var body: some View {
         HStack {
             Text(title)
             Spacer()
-            if let shortcut { Text(shortcut).foregroundStyle(Ink.tertiary(contrast)) }
+            if let shortcut { Text(shortcut).foregroundStyle(highlighted ? Ink.secondary : Ink.tertiary(contrast)) }
         }
         .font(.system(size: 13))
         .padding(.horizontal, 9)
@@ -596,15 +613,44 @@ struct MenuRowStyle: ButtonStyle {
 
         var body: some View {
             configuration.label
+                .environment(\.isRowHighlighted, hover.isOn && isEnabled)
                 .foregroundStyle(Ink.primary)
                 .background {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(hover.isOn && isEnabled ? (configuration.isPressed ? Palette.coral.opacity(0.25) : Palette.coralSoft) : Color.clear)
+                        .fill(hover.isOn && isEnabled ? (configuration.isPressed ? Palette.rowPressed : Palette.rowHover) : Color.clear)
                 }
                 .opacity(isEnabled ? 1 : 0.4)
                 .padding(.horizontal, 5)
                 .onHover { hover.isOn = $0 }
         }
+    }
+}
+
+/// Download or install in progress: a status line with a bar, not a greyed-out menu row
+/// (that read as a broken button at 2.4:1). Aligned with the menu row labels.
+struct UpdateProgressRow: View {
+    let title: String
+    let fraction: Double
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.system(size: 13))
+                .foregroundStyle(Ink.secondary)
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Palette.track)
+                    Capsule().fill(Palette.coral)
+                        .frame(width: proxy.size.width * min(max(fraction, 0), 1))
+                }
+            }
+            .frame(height: 4)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue(Formatters.percent(fraction * 100))
     }
 }
 
@@ -616,11 +662,13 @@ final class HoverState: ObservableObject {
 /// Weekly limit used per day. The header shows today's share, or the hovered day's.
 struct DailyUseSection: View {
     let days: [UsageHistory.Day]
+    let dimmed: Bool
     @StateObject private var hover: HoveredDay
 
     /// `hovered` seeds the highlighted day; only previews pass it, since `ImageRenderer` never hovers.
-    init(days: [UsageHistory.Day], hovered: Int? = nil) {
+    init(days: [UsageHistory.Day], dimmed: Bool = false, hovered: Int? = nil) {
         self.days = days
+        self.dimmed = dimmed
         _hover = StateObject(wrappedValue: HoveredDay(index: hovered))
     }
 
@@ -633,7 +681,7 @@ struct DailyUseSection: View {
                     .font(.system(size: 11).monospacedDigit())
                     .foregroundStyle(Ink.secondary)
             }
-            DailyBars(days: days, hovered: hover.index) { hover.index = $0 }
+            DailyBars(days: days, hovered: hover.index, dimmed: dimmed) { hover.index = $0 }
         }
         .padding(.horizontal, 14).padding(.vertical, 8)
     }
@@ -658,6 +706,8 @@ final class HoveredDay: ObservableObject {
 /// What went wrong, how old the data on screen is, and what to do about it (TZ FR-8, FR-25).
 struct ErrorNotice: View {
     let error: AppError
+    /// `error.message`, or its variant for a saved session key.
+    let message: String
     /// When the data still on screen was fetched; nil if there's none.
     let staleSince: Date?
     let recoveries: [ErrorRecovery]
@@ -670,12 +720,12 @@ struct ErrorNotice: View {
                 .font(.system(size: 14))
                 .foregroundStyle(Palette.warningGlyph)
             VStack(alignment: .leading, spacing: 2) {
-                Text(md(error.message))
+                Text(md(message))
                     .font(.system(size: 12))
                     .foregroundStyle(Ink.primary)
                     .fixedSize(horizontal: false, vertical: true)
                 if let staleSince {
-                    Text(Formatters.dataFromText(staleSince, now: now) + ".")
+                    Text(Formatters.notUpdatedText(staleSince, now: now) + ".")
                         .font(.system(size: 11)).foregroundStyle(Ink.secondary)
                 }
                 if !recoveries.isEmpty {
@@ -704,6 +754,38 @@ struct ErrorNotice: View {
     }
 }
 
+/// Data older than the stale limit with no error to explain it: a neutral notice (clock, grey
+/// glyph; nothing is broken) with the age and a way to refresh. Same shape as `ErrorNotice`.
+struct StaleNotice: View {
+    let fetched: Date
+    let now: Date
+    let isLoading: Bool
+    let refresh: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "clock")
+                .font(.system(size: 14))
+                .foregroundStyle(Ink.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Formatters.notUpdatedText(fetched, now: now) + ".")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Ink.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(tr("Usage may have changed since."))
+                    .font(.system(size: 11)).foregroundStyle(Ink.secondary)
+                Button(isLoading ? tr("Updating…") : tr("Refresh Now"), action: refresh)
+                    .buttonStyle(NoticeButtonStyle())
+                    .disabled(isLoading)
+                    .padding(.top, 6)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Palette.track, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
 /// Small bordered button on the error notice. Drawn in SwiftUI so it matches the menu rows
 /// and shows up in preview renders.
 struct NoticeButtonStyle: ButtonStyle {
@@ -722,7 +804,8 @@ struct NoticeButtonStyle: ButtonStyle {
                 .foregroundStyle(Ink.primary)
                 .padding(.horizontal, 10)
                 .frame(height: 22)
-                .background(shape.fill(configuration.isPressed ? Palette.coral.opacity(0.25) : hover.isOn ? Palette.coralSoft : Palette.surface))
+                // The notice is `track`; `rowHover` all but matched it in dark.
+                .background(shape.fill(configuration.isPressed ? Palette.trackPressed : hover.isOn ? Palette.trackHover : Palette.surface))
                 .overlay(shape.strokeBorder(Palette.border))
                 .contentShape(shape)
                 .onHover { hover.isOn = $0 }
@@ -734,6 +817,19 @@ struct NoticeButtonStyle: ButtonStyle {
 
 private struct PreviewRenderKey: EnvironmentKey {
     static let defaultValue = false
+}
+
+private struct RowHighlightedKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// Set by the row button styles while a row is hovered: tertiary text on `Palette.rowHover`
+    /// would fall below 4.5:1, so it steps up to secondary.
+    var isRowHighlighted: Bool {
+        get { self[RowHighlightedKey.self] }
+        set { self[RowHighlightedKey.self] = newValue }
+    }
 }
 
 extension EnvironmentValues {

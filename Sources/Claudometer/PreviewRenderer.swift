@@ -70,7 +70,7 @@ enum PreviewRenderer {
                     let icon = MenuBarIcon.image(
                         primary: MenuBarIcon.Ring(window: window, level: settings.level(for: window?.utilization)),
                         extras: extras.map { MenuBarIcon.Ring(window: $0, level: settings.level(for: $0.utilization), letter: true) },
-                        stale: store.state.isStale || store.state.error != nil,
+                        stale: store.isStale(at: Date()) || store.state.error != nil,
                         compact: compact,
                         updateBadge: badge
                     )
@@ -95,7 +95,7 @@ enum PreviewRenderer {
             let weeklyId = store.state.snapshot?.weekly?.id ?? "weekly_all"
             if store.history.daysWithData(windowId: weeklyId) >= 2 {
                 let days = store.history.dailyUse(windowId: weeklyId, now: Date())
-                let hoverRenderer = ImageRenderer(content: DailyUseSection(days: days, hovered: max(days.count - 3, 0))
+                let hoverRenderer = ImageRenderer(content: DailyUseSection(days: days, dimmed: store.isStale(at: Date()), hovered: max(days.count - 3, 0))
                     .frame(width: 300)
                     .background(Palette.canvas)
                     .environment(\.colorScheme, name == "dark" ? .dark : .light))
@@ -107,7 +107,7 @@ enum PreviewRenderer {
 
             // The clipboard card from clicking a limit in the popover.
             if let snapshot = store.state.snapshot,
-               let image = LimitImage.image(snapshot: snapshot, account: store.hasManyAccounts ? store.selected.title : nil, stale: store.state.isStale, now: Date(), colorScheme: name == "dark" ? .dark : .light) {
+               let image = LimitImage.image(snapshot: snapshot, account: store.hasManyAccounts ? store.selected.title : nil, stale: store.isStale(at: Date()), now: Date(), colorScheme: name == "dark" ? .dark : .light) {
                 write(image, scale: LimitImage.scale, to: dir.appendingPathComponent("copy-\(name)\(suffix(sample, language)).png"))
             }
 

@@ -2,10 +2,19 @@ import ClaudometerCore
 import Foundation
 import os
 
-/// Sends the daily check-in (`CheckIn`) at most once a UTC day. There's no switch in Settings;
-/// `defaults write dev.claudometer.app sendCheckIn -bool false` turns it off and forgets the ID.
+/// Sends the daily check-in (`CheckIn`) at most once a UTC day. Settings › General › Privacy
+/// turns it off (as does `defaults write dev.claudometer.app sendCheckIn -bool false`), which
+/// also forgets the ID.
 @MainActor
 enum CheckInService {
+    /// The Settings switch changed: turned off, the ID is forgotten right away, not at the next hourly pass.
+    static func settingChanged() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: SettingsKey.sendCheckIn) else { return }
+        defaults.removeObject(forKey: SettingsKey.checkInID)
+        defaults.removeObject(forKey: SettingsKey.checkInLastSent)
+    }
+
     private static var task: Task<Void, Never>?
     private static let log = Logger(subsystem: "dev.claudometer.app", category: "checkin")
 

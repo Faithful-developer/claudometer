@@ -8,7 +8,10 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-VERSION="${VERSION:-0.1.0}"
+# project.yml's MARKETING_VERSION is the one version number; a stale default here would make
+# every release look like an update to a self-built copy.
+VERSION="${VERSION:-$(sed -nE 's/^ *MARKETING_VERSION: *"?([0-9.]+)"?.*/\1/p' project.yml)}"
+[[ -n "$VERSION" ]] || { echo "No MARKETING_VERSION in project.yml"; exit 1; }
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
 BUNDLE_ID="${BUNDLE_ID:-dev.claudometer.app}"
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"   # "-" = ad-hoc

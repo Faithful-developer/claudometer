@@ -15,13 +15,17 @@ final class NotificationManager {
     nonisolated static let offlineIdentifier = "outage|offline"
     nonisolated static let updateIdentifier = "update"
     nonisolated static let installAction = "install"
+    /// Update notification without the Install button, for when installing in place isn't
+    /// possible (the button would only have opened the web page).
+    nonisolated static let updateLinkCategory = "update.link"
 
     /// "Install Update" button on the update notification.
     static func registerCategories() {
         guard isAvailable else { return }
         let install = UNNotificationAction(identifier: installAction, title: tr("Install Update"), options: [])
         UNUserNotificationCenter.current().setNotificationCategories([
-            UNNotificationCategory(identifier: updateIdentifier, actions: [install], intentIdentifiers: [])
+            UNNotificationCategory(identifier: updateIdentifier, actions: [install], intentIdentifiers: []),
+            UNNotificationCategory(identifier: updateLinkCategory, actions: [], intentIdentifiers: []),
         ])
     }
 
@@ -96,7 +100,8 @@ final class NotificationManager {
         trackers[account] = tracker
         persist(tracker, account: account)
         guard settings.notificationsEnabled, Self.isAvailable else { return }
-        for event in events { send(event, account: account, label: label, lowerThreshold: settings.notifyLow) }
+        let thresholds = [settings.notifyLow, settings.notifyHigh]
+        for event in events { send(event, account: account, label: label, thresholds: thresholds) }
     }
 
     /// After every fetch: `error` is nil on success. `fetchedAt` is the last known data's time.
@@ -128,9 +133,9 @@ final class NotificationManager {
                 label = nil
             }
             let content = UNMutableNotificationContent()
-            content.title = Self.titled(tr("Claudometer can’t update usage"), label: label)
+            content.title = Self.titled(tr("Usage Not Updating"), label: label)
             content.body = [error.message.replacingOccurrences(of: "`", with: ""),
-                            fetchedAt.map { Formatters.dataFromText($0) + "." }]
+                            fetchedAt.map { Formatters.notUpdatedText($0) + "." }]
                 .compactMap { $0 }.joined(separator: " ")
             let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
             // On by default, so permission may not have been asked yet; the system asks only once.
@@ -141,12 +146,15 @@ final class NotificationManager {
         }
     }
 
-    /// A newer release; clicking it opens the download page (see `AppDelegate`).
-    static func sendUpdate(_ release: AppRelease) {
+    /// A newer release; clicking it opens the download page (see `AppDelegate`). The Install
+    /// Update button only when `canInstall`. Titles leave out the app name: macOS shows it above.
+    static func sendUpdate(_ release: AppRelease, canInstall: Bool) {
         let content = UNMutableNotificationContent()
-        content.title = tr("Claudometer %@ is available", release.version)
-        content.body = tr("Click Install Update to update in place, or click here for the release notes.")
-        content.categoryIdentifier = updateIdentifier
+        content.title = tr("Version %@ Available", release.version)
+        content.body = canInstall
+            ? tr("Install Update replaces the app and relaunches it. The release notes open from the notification.")
+            : tr("Open the notification for the release notes and download.")
+        content.categoryIdentifier = canInstall ? updateIdentifier : updateLinkCategory
         content.userInfo = ["url": release.pageURL.absoluteString]
         let request = UNNotificationRequest(identifier: updateIdentifier, content: content, trigger: nil)
         Task {
@@ -157,22 +165,24 @@ final class NotificationManager {
 
     /// Identifiers are per window and threshold, so a repeat replaces the banner instead of
     /// stacking a second one.
-    private func send(_ event: ThresholdTracker.Event, account: String, label: String?, lowerThreshold: Int) {
+    private func send(_ event: ThresholdTracker.Event, account: String, label: String?, thresholds: [Int]) {
+        let lowerThreshold = thresholds.min() ?? 0
         let center = UNUserNotificationCenter.current()
         let content = UNMutableNotificationContent()
         let identifier: String
         switch event {
         case .crossed(let window, let threshold):
-            content.title = Self.titled(tr("%@: %@ used", window.title, Formatters.percent(window.utilization)), label: label)
+            content.title = Self.titled(tr("%@: %@ Used", window.title, Formatters.percent(window.utilization)), label: label)
             content.body = tr("Passed %lld%%. %@.", threshold, Formatters.resetText(window.resetsAt))
-            content.sound = threshold >= 95 ? .default : nil
+            // Only the second alert makes a sound, whatever percentage it is set to.
+            content.sound = ThresholdTracker.isFinal(threshold, of: thresholds) ? .default : nil
             identifier = NotificationID.make(account: account, "\(window.id)|\(threshold)")
             // The second alert supersedes the first one still sitting in Notification Center.
             if threshold > lowerThreshold {
                 center.removeDeliveredNotifications(withIdentifiers: [NotificationID.make(account: account, "\(window.id)|\(lowerThreshold)")])
             }
         case .reset(let window):
-            content.title = Self.titled(tr("%@ has reset", window.title), label: label)
+            content.title = Self.titled(tr("%@ Has Reset", window.title), label: label)
             content.body = tr("You’re back to %@ used.", Formatters.percent(window.utilization))
             identifier = NotificationID.make(account: account, "\(window.id)|reset")
         }

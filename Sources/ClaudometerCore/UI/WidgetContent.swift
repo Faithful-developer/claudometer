@@ -21,12 +21,20 @@ public struct WidgetStyle: Codable, Sendable {
     public var critical: Double
     /// The app's UI language, already resolved ("en", "ru"); nil in files from older builds.
     public var language: String?
+    /// The app's refresh interval, for the stale limit; nil in files from older builds.
+    public var refreshMinutes: Int?
 
-    public init(metric: MenuBarMetric = .session, warning: Double = 60, critical: Double = 85, language: String? = nil) {
+    public init(metric: MenuBarMetric = .session, warning: Double = 60, critical: Double = 85, language: String? = nil, refreshMinutes: Int? = nil) {
         self.metric = metric
         self.warning = warning
         self.critical = critical
         self.language = language
+        self.refreshMinutes = refreshMinutes
+    }
+
+    /// When data fetched at `fetched` turns stale for this style's refresh interval.
+    public func staleAt(_ fetched: Date) -> Date {
+        fetched.addingTimeInterval(UsageState.maxAge(refreshMinutes: refreshMinutes))
     }
 
     /// The real level for a window (kept when stale so the last known severity stays visible).
@@ -64,10 +72,7 @@ public struct UsageWidgetContent: View {
         self.refreshControl = refreshControl
     }
 
-    private var isStale: Bool {
-        guard let fetched = state.snapshot?.fetchedAt else { return true }
-        return now.timeIntervalSince(fetched) > 30 * 60 || state.error != nil
-    }
+    private var isStale: Bool { state.isStale(at: now, maxAge: UsageState.maxAge(refreshMinutes: style.refreshMinutes)) }
 
     public var body: some View {
         if let snapshot = state.snapshot {
@@ -122,9 +127,15 @@ public struct UsageWidgetContent: View {
                         }
                     } else if let tag = Palette.label(for: level) {
                         // Symbol + short label, so the state reads without the ring colour.
+                        // When both don't fit (Russian), the reset time stays: the symbol
+                        // already carries the state.
+                        let reset = Formatters.shortReset(window?.resetsAt, now: now)
                         HStack(spacing: 3) {
                             LevelTag(level: level, showsText: false)
-                            Text(verbatim: "\(tag) · \(Formatters.shortReset(window?.resetsAt, now: now))")
+                            ViewThatFits(in: .horizontal) {
+                                Text(verbatim: "\(tag) · \(reset)")
+                                Text(verbatim: reset)
+                            }
                         }
                     } else {
                         Text(Formatters.resetText(window?.resetsAt, now: now))
@@ -292,7 +303,7 @@ public struct UsageWidgetContent: View {
         .accessibilityLabel(Formatters.accessibilityLabel(window, level: level, stale: isStale, now: now))
     }
 
-    /// "Updated 14:05", or a clear "Out of date · 14:05" marker when the data is stale.
+    /// "Updated 14:05", or a clear "Not updated since 14:05" marker when the data is stale.
     private func footer(_ snapshot: UsageSnapshot) -> some View {
         HStack(spacing: 4) {
             if let account, size == .medium {
@@ -300,7 +311,12 @@ public struct UsageWidgetContent: View {
             }
             Group {
                 if isStale {
-                    Image(systemName: "exclamationmark.arrow.circlepath").foregroundStyle(Palette.warningGlyph)
+                    // Amber only when something failed; old data alone gets the popover's grey clock.
+                    if state.error != nil {
+                        Image(systemName: "exclamationmark.arrow.circlepath").foregroundStyle(Palette.warningGlyph)
+                    } else {
+                        Image(systemName: "clock").foregroundStyle(Ink.secondary)
+                    }
                     Text(staleText(snapshot, compact: false))
                         .foregroundStyle(Ink.secondary)
                         .lineLimit(2)
@@ -321,12 +337,13 @@ public struct UsageWidgetContent: View {
     }
 
     /// Why the data is old and what to do: "Login expired · Click to fix" when the user has
-    /// to act, "Offline · 14:05" while it may sort itself out, "Out of date · 14:05" otherwise.
+    /// to act, "Offline · 14:05" while it may sort itself out, "Not updated since 14:05" otherwise.
+    /// Times carry the date once the data is from another day.
     /// `compact` (small widget) keeps just the reason when the user has to act; the whole
     /// widget is the click target there.
     private func staleText(_ snapshot: UsageSnapshot, compact: Bool) -> String {
-        guard let error = state.error else { return Formatters.outOfDateText(snapshot.fetchedAt) }
-        guard error.needsUserAction else { return tr("%@ · %@", error.shortReason, Formatters.time(snapshot.fetchedAt)) }
+        guard let error = state.error else { return Formatters.notUpdatedText(snapshot.fetchedAt, now: now) }
+        guard error.needsUserAction else { return tr("%@ · %@", error.shortReason, Formatters.timestamp(snapshot.fetchedAt, now: now)) }
         return compact ? error.shortReason : tr("%@ · %@", error.shortReason, tr("Click to fix"))
     }
 

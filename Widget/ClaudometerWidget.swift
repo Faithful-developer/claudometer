@@ -29,17 +29,22 @@ struct UsageProvider: AppIntentTimelineProvider {
         return UsageEntry(date: Date(), state: state, account: account, accountName: name, accountRemoved: removed)
     }
 
-    /// Entries every 15 min for 2 h so countdowns stay roughly right between app reloads (FR-13).
+    /// Entries for 2 h so countdowns stay right between app reloads: every 5 min, every minute
+    /// before a reset, and one when the data turns stale (FR-13, `WidgetTimeline`).
     func timeline(for configuration: SelectAccountIntent, in context: Context) async -> Timeline<UsageEntry> {
         let (account, name, removed) = Self.resolve(configuration)
         // No shared state yet (app never ran, or the folder is not readable): ask to open the app.
         let state = SnapshotStore.default(account: account).load() ?? UsageState()
         let now = Date()
+        let dates = WidgetTimeline.entryDates(
+            now: now,
+            resets: state.snapshot?.windows.compactMap(\.resetsAt) ?? [],
+            staleAt: state.snapshot.map { WidgetView.style.staleAt($0.fetchedAt) }
+        )
         // Each entry projects its own time, so a limit that resets while the app can't fetch
         // drops to 0% on schedule instead of showing the old figure.
-        let entries = (0..<8).map { step -> UsageEntry in
-            let date = now.addingTimeInterval(Double(step) * 15 * 60)
-            return UsageEntry(date: date, state: state.projected(at: date), account: account, accountName: name, accountRemoved: removed)
+        let entries = dates.map { date in
+            UsageEntry(date: date, state: state.projected(at: date), account: account, accountName: name, accountRemoved: removed)
         }
         return Timeline(entries: entries, policy: .atEnd)
     }
@@ -131,7 +136,7 @@ struct ClaudometerWidget: Widget {
                 .widgetURL(URL(string: "claudometer://open?account=\(entry.account.id)"))
         }
         .configurationDisplayName("Claude Usage")
-        .description("Your Claude plan limits and when they reset.")
+        .description("See your Claude plan limits and when they reset.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }

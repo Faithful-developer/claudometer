@@ -84,19 +84,28 @@ public struct RingGauge<Label: View>: View {
     let fraction: Double
     let level: UsageLevel
     let lineWidth: CGFloat
+    let highlighted: Bool
     let label: Label
     @Environment(\.widgetRenderingMode) private var renderingMode
 
-    public init(fraction: Double, level: UsageLevel, lineWidth: CGFloat = 6, @ViewBuilder label: () -> Label) {
+    /// `highlighted`: the ring sits on a hovered row, where the usual track nearly matches the
+    /// tint (1.11:1), so it steps up to the Increase Contrast track (1.31:1).
+    public init(fraction: Double, level: UsageLevel, lineWidth: CGFloat = 6, highlighted: Bool = false, @ViewBuilder label: () -> Label) {
         self.fraction = fraction
         self.level = level
         self.lineWidth = lineWidth
+        self.highlighted = highlighted
         self.label = label()
+    }
+
+    private var trackColor: Color {
+        guard renderingMode == .fullColor else { return Ink.trackVibrant }
+        return highlighted ? Palette.trackIncreased : Palette.ringTrack
     }
 
     public var body: some View {
         ZStack {
-            Circle().stroke(renderingMode == .fullColor ? Palette.ringTrack : Ink.trackVibrant, lineWidth: lineWidth)
+            Circle().stroke(trackColor, lineWidth: lineWidth)
             GeometryReader { proxy in
                 Circle()
                     .trim(from: 0, to: drawnFraction(diameter: min(proxy.size.width, proxy.size.height)))
@@ -109,11 +118,9 @@ public struct RingGauge<Label: View>: View {
         .padding(lineWidth / 2)
     }
 
-    /// Stale rings use secondary ink: the grey series colour was under 3:1 on the track and
-    /// read as a faint blob at low values. The "Last known" label says why it is grey.
-    private var fillColor: Color {
-        level == .unknown ? Ink.secondary : Palette.fill(for: level)
-    }
+    /// Stale rings use `Palette.staleFill`, like every other stale chart. The "Last known"
+    /// label says why it is grey.
+    private var fillColor: Color { Palette.fill(for: level) }
 
     /// Any value above zero draws at least one stroke width of arc, so 1% reads as the start
     /// of an arc rather than a round-cap dot. 0% draws nothing and the track shows the scale.
@@ -186,7 +193,8 @@ public struct StatusLabel: View {
     private var content: (String, String, Color, Color)? {
         if stale {
             guard let symbol = Palette.symbol(for: level), let label = Formatters.levelLabel(level) else { return nil }
-            return (symbol, tr("Last known: %@", label), Palette.glyph(for: level), Palette.track)
+            // Grey glyph, like the row tags: the level is history, not an alert.
+            return (symbol, tr("Last known: %@", label), Ink.secondary, Palette.track)
         }
         switch level {
         case .critical: return ("exclamationmark.octagon.fill", tr("Near limit"), Palette.criticalGlyph, Palette.criticalSoft)
@@ -218,7 +226,8 @@ public struct LevelTag: View {
         if let symbol = Palette.symbol(for: level) {
             HStack(spacing: 3) {
                 Image(systemName: symbol).foregroundStyle(stale ? Ink.secondary : Palette.glyph(for: level))
-                if showsText, let label = Palette.label(for: level) {
+                // "Getting close" is about now; on last known data the grey glyph says enough.
+                if showsText, !stale, let label = Palette.label(for: level) {
                     Text(label).foregroundStyle(Ink.secondary)
                 }
             }
@@ -246,7 +255,7 @@ public struct BreakdownChart: View {
     }
 
     private func color(_ row: BreakdownRow) -> Color {
-        dimmed ? Palette.seriesOther : Palette.color(forBreakdownKey: row.key)
+        dimmed ? Palette.staleFill : Palette.color(forBreakdownKey: row.key)
     }
 
     private var valueInk: Color { dimmed ? Ink.secondary : Ink.primary }
@@ -315,13 +324,21 @@ public struct BreakdownChart: View {
 public struct DailyBars: View {
     let days: [UsageHistory.Day]
     let hovered: Int?
+    let dimmed: Bool
     let onHover: ((Int?) -> Void)?
     @Environment(\.colorSchemeContrast) private var contrast
 
-    public init(days: [UsageHistory.Day], hovered: Int? = nil, onHover: ((Int?) -> Void)? = nil) {
+    /// `dimmed` (stale data): grey bars, like the other charts.
+    public init(days: [UsageHistory.Day], hovered: Int? = nil, dimmed: Bool = false, onHover: ((Int?) -> Void)? = nil) {
         self.days = days
         self.hovered = hovered
+        self.dimmed = dimmed
         self.onHover = onHover
+    }
+
+    private var barFill: LinearGradient {
+        let colors = dimmed ? [Palette.staleFill, Palette.staleFill] : [Palette.coral, Palette.coralLight]
+        return LinearGradient(colors: colors, startPoint: .bottom, endPoint: .top)
     }
 
     public var body: some View {
@@ -334,7 +351,7 @@ public struct DailyBars: View {
                     ZStack(alignment: .bottom) {
                         Capsule().fill(Ink.track(contrast))
                         Capsule()
-                            .fill(LinearGradient(colors: [Palette.coral, Palette.coralLight], startPoint: .bottom, endPoint: .top))
+                            .fill(barFill)
                             .frame(height: day.percent > 0 ? max(30 * day.percent / top, 4) : 0)
                     }
                     .frame(width: 10, height: 30)

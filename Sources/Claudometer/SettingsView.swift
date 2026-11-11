@@ -104,6 +104,7 @@ struct GeneralSettings: View {
     @AppStorage(SettingsKey.menuBarExtraThreshold) private var extraThreshold = 80.0
     @AppStorage(SettingsKey.warningThreshold) private var warning = 60.0
     @AppStorage(SettingsKey.criticalThreshold) private var critical = 85.0
+    @AppStorage(SettingsKey.sendCheckIn) private var sendCheckIn = true
     @StateObject private var loginItem = LoginItem()
 
     /// Limits that can be added next to the main one (FR-28). With "Highest" the main limit
@@ -132,16 +133,12 @@ struct GeneralSettings: View {
     var body: some View {
         Form {
             Section {
-                Picker(tr("Appearance"), selection: $appearance) {
-                    ForEach(AppAppearance.allCases) { Text($0.title).tag($0.rawValue) }
-                }
-                .pickerStyle(.segmented)
                 Picker(tr("Language"), selection: Binding(get: { language }, set: { AppSettings.setLanguage($0) })) {
                     Text(tr("Same as macOS")).tag("system")
                     Text(verbatim: "English").tag("en")
                     Text(verbatim: "Русский").tag("ru")
                 }
-                Toggle(tr("Open at Login"), isOn: Binding(get: { loginItem.isEnabled }, set: { loginItem.set($0) }))
+                Toggle(tr("Open at login"), isOn: Binding(get: { loginItem.isEnabled }, set: { loginItem.set($0) }))
                 if let error = loginItem.error {
                     Label {
                         Text(error).foregroundStyle(Ink.secondary)
@@ -200,26 +197,47 @@ struct GeneralSettings: View {
             }
 
             Section {
-                ThresholdSlider(title: tr("Warning"), symbol: "exclamationmark.triangle.fill", tint: Palette.warningGlyph, value: $warning, range: 10...95)
-                ThresholdSlider(title: tr("Critical"), symbol: "exclamationmark.octagon.fill", tint: Palette.criticalGlyph, value: $critical, range: 15...100)
+                ThresholdSlider(title: tr("Warning"), symbol: "exclamationmark.triangle.fill", tint: Palette.warningGlyph, value: $warning, range: 10...100)
+                ThresholdSlider(title: tr("Critical"), symbol: "exclamationmark.octagon.fill", tint: Palette.criticalGlyph, value: $critical, range: 10...100)
             } header: {
                 Text(tr("Highlight Levels"))
             } footer: {
-                FormNote(tr("Meters and the menu bar icon change colour above these levels."))
+                FormNote(tr("Meters and the menu bar icon change color at these levels."))
             }
 
-            Section(tr("Updates")) {
+            // "Updates" elsewhere means new versions of the app; this is how often usage is read.
+            Section(tr("Refresh Interval")) {
                 Picker(tr("Check usage"), selection: $refreshMinutes) {
                     ForEach([1, 2, 5, 10, 15, 30], id: \.self) { minutes in
                         Text(minutes == 1 ? tr("Every minute") : tr("Every %lld minutes", minutes)).tag(minutes)
                     }
                 }
             }
+
+            Section(tr("Privacy")) {
+                Toggle(isOn: $sendCheckIn) {
+                    Text(tr("Send a daily anonymous check-in"))
+                    Text(tr("A random ID, the app version, language and macOS version, once a day, to count active installs. Nothing about your Claude account or usage."))
+                }
+            }
+
+            // Last: following the system is the default, and most people never change it.
+            Section {
+                Picker(tr("Appearance"), selection: $appearance) {
+                    ForEach(AppAppearance.allCases) { Text($0.title).tag($0.rawValue) }
+                }
+                .pickerStyle(.segmented)
+            }
         }
         .formStyle(.grouped)
         .fixedSize(horizontal: false, vertical: true)
         .onChange(of: appearance) { AppAppearance.applyCurrent() }
-        .onChange(of: refreshMinutes) { store.restartPolling() }
+        .onChange(of: refreshMinutes) {
+            store.restartPolling()
+            // The widget's stale limit follows the interval.
+            AppSettings.saveWidgetStyle()
+        }
+        .onChange(of: sendCheckIn) { CheckInService.settingChanged() }
         .onChange(of: metric) { AppSettings.saveWidgetStyle() }
         .onChange(of: warning) {
             if critical < warning { critical = warning }
@@ -249,7 +267,7 @@ struct NotificationSettings: View {
                     Text(tr("At the levels below, once per limit until it resets."))
                 }
                 Group {
-                    ThresholdSlider(title: tr("First alert"), symbol: "bell.fill", tint: Palette.warningGlyph, value: percent($notifyLow), range: 50...95)
+                    ThresholdSlider(title: tr("First alert"), symbol: "bell.fill", tint: Palette.warningGlyph, value: percent($notifyLow), range: 50...100)
                     ThresholdSlider(title: tr("Second alert"), symbol: "bell.badge.fill", tint: Palette.criticalGlyph, value: percent($notifyHigh), range: 50...100)
                     Toggle(tr("Notify when a limit resets"), isOn: $notifyReset)
                 }
@@ -337,12 +355,19 @@ private struct ClaudeCodeAccountSections: View {
 
     var body: some View {
         let account = store.accounts.first(where: \.isPrimary) ?? .primary
-        Section(store.hasManyAccounts ? account.title : tr("Data Source")) {
+        Section {
             if store.hasManyAccounts {
                 AccountNameField(account: account)
             }
             LabeledContent(tr("Using")) {
                 Text(sourceText).foregroundStyle(Ink.secondary)
+            }
+        } header: {
+            Text(store.hasManyAccounts ? account.title : tr("Data Source"))
+        } footer: {
+            // "Not connected" alone was a dead end: say what connects it.
+            if store.state(of: Account.primaryID).snapshot == nil {
+                FormNote(tr("Sign in to Claude Code (run `claude` in Terminal, then `/login`), or add a claude.ai session key below."))
             }
         }
 
@@ -368,7 +393,7 @@ private struct ClaudeCodeAccountSections: View {
         } footer: {
             // Steps rather than a paragraph: for someone without Claude Code this is the way in.
             VStack(alignment: .leading, spacing: 6) {
-                FormNote(tr("Used only when the Claude Code login has expired, so usage stays live while Claude Code is closed."))
+                FormNote(tr("Used when the Claude Code login is missing or expired, or Claude Code’s usage check is rate limited, so usage stays live while Claude Code is closed."))
                 VStack(alignment: .leading, spacing: 3) {
                     FormNote(tr("1. Open claude.ai in your browser and sign in."))
                     FormNote(tr("2. Open Developer Tools (⌥⌘I), then Storage (Safari) or Application (Chrome) → Cookies."))
@@ -737,6 +762,7 @@ private extension String {
 
 struct AboutSettings: View {
     @Environment(UpdateStore.self) private var updates
+    @AppStorage(SettingsKey.sendCheckIn) private var sendCheckIn = true
 
     var body: some View {
         VStack(spacing: 10) {
@@ -754,6 +780,14 @@ struct AboutSettings: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            // On by default, so it's said here too, not only in General.
+            if sendCheckIn {
+                Text(tr("Sends an anonymous daily check-in to count active installs. You can turn it off in General."))
+                    .font(.footnote)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             HStack(spacing: 8) {
                 if let release = updates.available {
                     if updates.canInstall {
@@ -798,15 +832,22 @@ struct ThresholdSlider: View {
     let tint: Color
     @Binding var value: Double
     let range: ClosedRange<Double>
+    @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
         LabeledContent {
             HStack {
                 Slider(value: $value, in: range, step: 5)
+                    // The level itself, not the knob's position within the range.
+                    .accessibilityValue(Text(verbatim: Formatters.percent(value)))
                 Text(verbatim: "\(Int(value))%").monospacedDigit().frame(width: 40, alignment: .trailing)
+                    .opacity(isEnabled ? 1 : 0.4)
             }
         } label: {
+            // The coloured symbol and title dim with the slider, so a switched-off group
+            // doesn't look active.
             Label { Text(title) } icon: { Image(systemName: symbol).foregroundStyle(tint) }
+                .opacity(isEnabled ? 1 : 0.4)
         }
     }
 }

@@ -1,7 +1,7 @@
 import Foundation
 
-/// The daily check-in that counts active installs (TZ NFR-4). Always on, with no
-/// switch in Settings (see `CheckInService` for the Terminal opt-out). Sends a random ID made on this Mac, the app version, the UI
+/// The daily check-in that counts active installs (TZ NFR-4). On by default; Settings ›
+/// General › Privacy turns it off. Sends a random ID made on this Mac, the app version, the UI
 /// language and the macOS version; nothing about the Claude account or its usage.
 public struct CheckIn: Codable, Equatable, Sendable {
     public let id: String

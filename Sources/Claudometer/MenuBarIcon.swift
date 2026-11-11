@@ -82,7 +82,8 @@ enum MenuBarIcon {
         let ringRect = NSRect(x: x + 1, y: (height - ringSize) / 2, width: ringSize, height: ringSize).insetBy(dx: 1.25, dy: 1.25)
         let center = NSPoint(x: ringRect.midX, y: ringRect.midY)
         let radius = ringRect.width / 2
-        let tint = color(for: stale ? .ok : ring.level)
+        // Last known data: the arc greys out with the text, as everywhere else.
+        let tint = stale ? NSColor.secondaryLabelColor : color(for: ring.level)
 
         let track = NSBezierPath(ovalIn: ringRect)
         track.lineWidth = 2.5

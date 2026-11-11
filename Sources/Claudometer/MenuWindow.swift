@@ -81,6 +81,35 @@ enum MenuBarMenu {
         }
     }
 
+    /// Opens the menu as a click on the icon would. False when the icon can't be seen (behind
+    /// the notch, or hidden by a menu bar manager such as Bartender or Ice, which keep the
+    /// button but move it off screen), so the caller can show something else.
+    @discardableResult
+    static func open() -> Bool {
+        if let window, window.isVisible { return true }
+        guard let button = statusItemButton(), isOnScreen(button) else { return false }
+        NSApp.activate()
+        button.performClick(nil)
+        return true
+    }
+
+    /// The button's window is shown and not covered, and the button lies wholly on a screen;
+    /// on a screen with a notch, inside the menu bar space left or right of it.
+    private static func isOnScreen(_ button: NSStatusBarButton) -> Bool {
+        guard let window = button.window, window.isVisible, window.occlusionState.contains(.visible) else { return false }
+        let frame = window.convertToScreen(button.convert(button.bounds, to: nil))
+        guard frame.width > 0, frame.height > 0 else { return false }
+        return NSScreen.screens.contains { screen in
+            guard screen.frame.contains(frame) else { return false }
+            guard screen.safeAreaInsets.top > 0 else { return true }
+            // Horizontal only: the areas' height is the notch's, which may not match the
+            // button's to the point.
+            return [screen.auxiliaryTopLeftArea, screen.auxiliaryTopRightArea]
+                .compactMap { $0 }
+                .contains { frame.minX >= $0.minX - 1 && frame.maxX <= $0.maxX + 1 }
+        }
+    }
+
     /// SwiftUI doesn't expose the `NSStatusItem` behind `MenuBarExtra`, so look for its
     /// button in the status bar window that hosts it.
     private static func statusItemButton() -> NSStatusBarButton? {

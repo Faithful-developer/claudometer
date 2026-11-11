@@ -80,7 +80,7 @@ User-Agent: Claudometer/<version>
 ### 2.3 Fallback: claude.ai session key (implemented 2026-10-07)
 A claude.ai session cookie (`sessionKey`), entered manually in Settings → Accounts and stored in Claudometer's own Keychain item (`dev.claudometer.claude-ai-session`):
 `GET https://claude.ai/api/organizations` → `GET https://claude.ai/api/organizations/{uuid}/usage`. The response shape is the same as §2.1.
-- Used only when Claude Code's login is missing, expired or unreadable (E-1…E-3). Claude Code's token always comes first.
+- Used only when Claude Code's login is missing, expired or unreadable (E-1…E-3), or when the Claude Code route is rate limited (FR-16). Claude Code's token always comes first.
 - "Save & Test" checks the key against claude.ai and stores it only if it works.
 - The plan comes from the organization's capabilities: `claude_ultra` → "ultra" (name to be confirmed, Q-3), then `claude_max` → "max", then `claude_pro` → "pro".
 - HTTP 401, or 403 with a JSON body → "session key expired" (normal polling cadence until the user pastes a new key). 403 with an HTML body or `cf-mitigated` → "blocked by claude.ai" (Cloudflare bot check; backoff).
@@ -175,12 +175,12 @@ enum UsageState: Codable {
   - **Large (`systemLarge`):** all windows, the plan name and "updated at" time.
 - **FR-11:** The widget reads the latest `UsageState` from the shared folder `~/Library/Application Support/Claudometer/` (NFR-7). **The widget makes no network calls.**
 - **FR-12:** The app calls `WidgetCenter.shared.reloadAllTimelines()` after each successful fetch.
-- **FR-13:** Each widget timeline adds entries every 15 min so countdowns stay roughly current between app updates. If the data is more than 30 min old, the widget shows a "stale" badge.
+- **FR-13:** Each widget timeline covers 2 h: an entry every 5 min, every minute in the 15 min before each reset, one at the reset, and one when the data turns stale (`WidgetTimeline.entryDates`), so countdowns stay current between app updates. Data is shown as last known (greyed, "Not updated since 14:05", or the error's short reason) when the last fetch failed or the reading is older than the stale limit: 35 min, or 1.5 × the refresh interval if that is longer (`UsageState.maxAge(refreshMinutes:)`; the widget gets the interval through `WidgetStyle`). The popover, menu bar icon, copy card and widget all use this one rule (`UsageState.isStale(at:maxAge:)`); the menu bar re-checks it every minute. In the popover, old data without an error gets a neutral notice with Refresh Now.
 - **FR-14:** Clicking the widget opens the popover through the URL scheme `claudometer://open`.
 
 ### 3.4 Polling
 - **FR-15:** The app fetches once at launch, then repeats every N minutes. N defaults to 5 and can be set from 1 to 30.
-- **FR-16:** On error, the app backs off exponentially: 1 → 2 → 4 → 8 → 15 min (cap), then returns to normal after a success. When the server returns HTTP 429 with a `Retry-After` header, the app waits at least that long. A 429 from the Claude Code route is first retried through the claude.ai backup key (§2.3), if one is saved; if that fails too, the original 429 is shown.
+- **FR-16:** On error, the app backs off exponentially: 1 → 2 → 4 → 8 → 15 min (cap), then returns to normal after a success. When the server returns HTTP 429 with a `Retry-After` header, the app waits at least that long. A 429 from the Claude Code route puts that route on a cooldown (`RouteCooldown`): its `Retry-After` (seconds or an HTTP date, capped at 1 h), or else 5 min doubling per 429 in a row up to 1 h. Until the cooldown ends, the Claude Code account reads through the claude.ai backup key (§2.3) if one is saved, and the Claude Code route is not asked; manual Refresh doesn't bypass it. When the backup fails too, the error shown is the backup's if it needs the user (e.g. an expired session key), otherwise the 429 with the time left.
 - **FR-17:** Polling pauses while the Mac sleeps and an immediate fetch runs on wake (`NSWorkspace.didWakeNotification`). The app also fetches immediately when the network comes back (`NWPathMonitor`).
 - **FR-18:** Clicking Refresh fetches immediately. Repeated clicks are debounced to one fetch every 10 s.
 
@@ -263,7 +263,7 @@ enum UsageState: Codable {
 - **NFR-4 · Privacy and security:**
   - The access token stays in memory only. It is never written to disk, `UserDefaults`, logs or the App Group container.
   - Network hosts: `api.anthropic.com`, `claude.ai` if the fallback is enabled, GitHub (`api.github.com` for the daily release check, `github.com` to download an update the user installs) and the check-in Worker (`claudometer-stats.claudometer.workers.dev`).
-  - One check-in a day (`CheckIn`, on by default, no switch in Settings): a random ID made on the Mac, app version, language and macOS version, sent to the `server/checkin` Cloudflare Worker. It stores one row per install per UTC day, no IP addresses, and deletes rows after 90 days. `defaults write dev.claudometer.app sendCheckIn -bool false` turns it off and deletes the ID. No other analytics or telemetry.
+  - One check-in a day (`CheckIn`, on by default, switch in Settings › General › Privacy): a random ID made on the Mac, app version, language and macOS version, sent to the `server/checkin` Cloudflare Worker. It stores one row per install per UTC day, no IP addresses, and deletes rows after 90 days. Turning it off (the switch, or `defaults write dev.claudometer.app sendCheckIn -bool false`) deletes the ID. No other analytics or telemetry.
   - Logs go through `os.Logger` with `privacy: .private` on anything sensitive.
 - **NFR-5 · UX:**
   - Supports light and dark mode.

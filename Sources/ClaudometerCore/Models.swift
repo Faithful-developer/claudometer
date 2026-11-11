@@ -297,6 +297,20 @@ public enum AppError: Error, Codable, Hashable, Sendable {
         }
     }
 
+    /// `message`, aware of a saved session key: suggesting one when it is already saved (and
+    /// failed too) sent people to Settings for nothing.
+    public func message(hasSessionKey: Bool) -> String {
+        guard hasSessionKey else { return message }
+        switch self {
+        case .notSignedIn:
+            return tr("Not signed in to Claude Code, and the claude.ai session key couldn’t update either. Click Try Again.")
+        case .tokenExpired:
+            return tr("Claude Code login expired, and the claude.ai session key couldn’t update either. Open Claude Code, or click Try Again.")
+        default:
+            return message
+        }
+    }
+
     /// Errors where keeping the last good data on screen makes sense.
     public var keepsStaleData: Bool {
         switch self {
@@ -368,7 +382,24 @@ public struct UsageState: Codable, Hashable, Sendable {
         self.error = error
     }
 
-    public var isStale: Bool { snapshot != nil && error != nil }
+    /// Older than this, data is shown as last known even without an error: polling stalled, the
+    /// Mac slept, or the app isn't running (the widget). The floor; see `maxAge(refreshMinutes:)`.
+    public static let maxAge: TimeInterval = 35 * 60
+
+    /// The stale limit for a refresh interval: at least 35 min, and one and a half intervals at
+    /// longer settings, so a single slow or skipped refresh doesn't grey everything (at 30 min,
+    /// 35 min left only 5 min of slack). Nil (older widget files) gives the floor.
+    public static func maxAge(refreshMinutes: Int?) -> TimeInterval {
+        guard let refreshMinutes, refreshMinutes > 0 else { return maxAge }
+        return max(maxAge, TimeInterval(refreshMinutes) * 60 * 1.5)
+    }
+
+    /// Last known data, not live: the last fetch failed or the reading is older than `maxAge`.
+    /// The popover, menu bar, copy card and widget all decide with this one rule (TZ FR-13).
+    public func isStale(at now: Date, maxAge: TimeInterval = UsageState.maxAge) -> Bool {
+        guard let snapshot else { return false }
+        return error != nil || now.timeIntervalSince(snapshot.fetchedAt) > maxAge
+    }
 
     /// The data has limits but no 5-hour session window: a plan without one (verified Ultra,
     /// TZ §2.7), not an error. False while something needs fixing first (signed out, expired).

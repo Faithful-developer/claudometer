@@ -46,8 +46,8 @@ enum LimitImage {
 
     private static func footer(snapshot: UsageSnapshot, stale: Bool, now: Date) -> String {
         let style = Date.FormatStyle(date: .abbreviated, time: .shortened).locale(L10n.locale)
-        // Stale: the same "Showing data from 14:05" as the popover.
-        return stale ? Formatters.dataFromText(snapshot.fetchedAt, now: now) : now.formatted(style)
+        // Stale: the same "Not updated since 14:05" as the popover.
+        return stale ? Formatters.notUpdatedText(snapshot.fetchedAt, now: now) : now.formatted(style)
     }
 
     /// One limit: title on the left, "68% · resets Fri 21:53" on the right, meter below.

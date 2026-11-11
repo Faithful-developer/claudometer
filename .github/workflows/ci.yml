@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcode-select -p
+          swift --version
+
+      - name: Unit tests
+        run: scripts/test.sh
+
+      - name: Build app (Swift package)
+        run: swift build
+
+      # SwiftPM never compiles Widget/, so the Xcode project is built too. Unsigned (ad hoc),
+      # Debug, nothing installed.
+      - name: Build app and widget (Xcode)
+        run: |
+          brew install xcodegen
+          xcodegen generate
+          set -o pipefail
+          xcodebuild -project Claudometer.xcodeproj -scheme Claudometer -configuration Debug \
+            -derivedDataPath build/ci CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO \
+            build | tail -n 40
+          test -d build/ci/Build/Products/Debug/Claudometer.app/Contents/PlugIns/ClaudometerWidget.appex
