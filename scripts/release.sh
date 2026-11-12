@@ -22,7 +22,10 @@ PROJECT_VERSION="$(sed -nE 's/^ *MARKETING_VERSION: *"?([0-9.]+)"?.*/\1/p' proje
 if ! $DRY_RUN; then
     [[ -z "$(git status --porcelain)" ]] || { echo "Commit your changes first."; exit 1; }
     [[ "$(git branch --show-current)" == "main" ]] || { echo "Release from main."; exit 1; }
-    git rev-parse "$TAG" >/dev/null 2>&1 && { echo "$TAG already exists."; exit 1; }
+    # Tags only: a plain `git rev-parse "$TAG"` also matched a branch named like the tag.
+    # GitHub is checked too, since a tag pushed from elsewhere would fail the push later.
+    git rev-parse -q --verify "refs/tags/$TAG" >/dev/null && { echo "Tag $TAG already exists here."; exit 1; }
+    [[ -z "$(git ls-remote --tags origin "refs/tags/$TAG")" ]] || { echo "Tag $TAG already exists on GitHub."; exit 1; }
 fi
 
 mkdir -p build
