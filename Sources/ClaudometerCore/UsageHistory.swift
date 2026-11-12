@@ -68,6 +68,17 @@ public struct UsageHistory: Codable, Equatable, Sendable {
         }
     }
 
+    /// Fair share of a weekly limit for today: what was left at the start of today, spread
+    /// evenly over the days until the reset (today included). `todayUse` is today's bar from
+    /// `dailyUse`. Nil without a reset time, once the limit is used up, or after the reset.
+    public static func dailyBudget(for window: LimitWindow, todayUse: Double, now: Date, calendar: Calendar = .current) -> Double? {
+        guard let resetsAt = window.resetsAt, resetsAt > now, window.utilization < 100 else { return nil }
+        let startOfToday = calendar.startOfDay(for: now)
+        let days = max(1, (resetsAt.timeIntervalSince(startOfToday) / 86400).rounded(.up))
+        let leftThisMorning = max(0, 100 - max(window.utilization - todayUse, 0))
+        return leftThisMorning / days
+    }
+
     /// Days that have at least one reading of the window.
     public func daysWithData(windowId: String, calendar: Calendar = .current) -> Int {
         Set(samples.filter { $0.u[windowId] != nil }.map { calendar.startOfDay(for: $0.t) }).count
@@ -79,11 +90,15 @@ public struct UsageHistory: Codable, Equatable, Sendable {
     /// (idle, slowing down, not enough data, or the reset comes first).
     ///
     /// The pace is measured over the last hour for the 5-hour session and the last day for
-    /// weekly limits, within the current window only.
-    public func forecast(for window: LimitWindow, at now: Date) -> Date? {
+    /// weekly limits, within the current window only. `forAlert` asks for more data before
+    /// trusting it (30 min for the session, 3 h for weekly limits): a short burst can show on
+    /// screen, but shouldn't trigger a notification.
+    public func forecast(for window: LimitWindow, at now: Date, forAlert: Bool = false) -> Date? {
         guard let resetsAt = window.resetsAt, resetsAt > now, window.utilization < 100 else { return nil }
         let lookback: TimeInterval = window.group == .session ? 3600 : 86400
-        let minimumSpan: TimeInterval = window.group == .session ? 10 * 60 : 3600
+        let minimumSpan: TimeInterval = window.group == .session
+            ? (forAlert ? 30 * 60 : 10 * 60)
+            : (forAlert ? 3 * 3600 : 3600)
         let sameWindow = samples.filter { sample in
             guard sample.u[window.id] != nil, now.timeIntervalSince(sample.t) <= lookback, sample.t < now else { return false }
             guard let reset = sample.r[window.id] else { return false }

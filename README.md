@@ -2,7 +2,7 @@
 
 # Claudometer — unofficial Claude usage meter
 
-A tiny macOS menu bar app (plus a desktop widget) that shows how much of your **Claude plan limits** you've used: the 5‑hour session window and the weekly windows, each with a reset countdown. On Ultra, which has no 5‑hour limit for verified accounts, it shows the weekly limits. When another limit runs high (say weekly at 80%), it gets its own lettered ring in the menu bar so you don't miss it, and in Settings you can keep weekly or per-model limits (like Fable) next to the session ring all the time. The popover also charts the last 7 days (hover a day to see its share) and, when you're using a limit fast, says when you'd hit it at this pace. Click any limit to copy all your limits as an image. Have a personal and a work account? Add up to three more with a claude.ai session key and switch between them in the popover. In English or Russian.
+A tiny macOS menu bar app (plus a desktop widget) that shows how much of your **Claude plan limits** you've used: the 5‑hour session window and the weekly windows, each with a reset countdown. On Ultra, which has no 5‑hour limit for verified accounts, it shows the weekly limits. When another limit runs high (say weekly at 80%), it gets its own lettered ring in the menu bar so you don't miss it, and in Settings you can keep weekly or per-model limits (like Fable) next to the session ring all the time. The popover also charts the last 7 days (hover a day to see its share, and see today's fair share of what's left of the week) and, when you're using a limit fast, says when you'd hit it at this pace; an optional alert warns you once when a limit would run out well before it resets. Click any limit to copy all your limits as an image. Have a personal and a work account? Add up to three more with a claude.ai session key and switch between them in the popover. In English or Russian.
 
 > **Unofficial.** Claudometer is an independent open-source project. It is not affiliated with, endorsed by or supported by Anthropic. It relies on an **undocumented** usage endpoint that may change or stop working at any time; if the format changes, the app says "Usage format not recognised" instead of showing wrong numbers.
 
@@ -101,7 +101,7 @@ Claude Code refreshes its login only while it's running, so after about 8 hours 
 To watch another Claude account too (say a work Team plan next to your personal one), paste the `sessionKey` of a browser signed in to it under **Settings → Accounts → Add Account**. You can add up to three.
 
 - The popover gets a switcher (⌘1…⌘4), and the menu bar shows the account you pick there.
-- Each desktop widget shows the account you choose in **Edit Widget**.
+- Each desktop widget shows the account you choose in **Edit Widget**, where you can also pick its main limit.
 - Limit and outage alerts cover every account, with its name in the title. Being offline gives a single alert.
 - If the key turns out to be your Claude Code account, it's saved as that account's backup instead of being added twice. If the login has several organizations, you pick one.
 - Each key gets its own Keychain item, sent only to `claude.ai`. **Remove Account…** deletes the key and that account's history.
@@ -139,13 +139,13 @@ TZ.md                      technical specification
 ## Design
 
 Claudometer follows Apple's Human Interface Guidelines and looks like a built-in menu bar extra (Battery, Wi‑Fi, Control Center):
-- **System look:** the window keeps the system material. Text uses hierarchical `.primary`/`.secondary`/`.tertiary` styles, so it picks up vibrancy, light/dark mode and Increase Contrast.
+- **System look:** the window keeps the system material. On macOS 26 the menu sits on Liquid Glass with system text colours, native glass buttons and a segmented account switcher; brand colours stay on the rings, meters and status labels.
 - **Light and dark:** follows the system by default. *Settings → General → Appearance* can pin Light or Dark.
 - **Language:** English or Russian, following macOS unless *Settings → General → Language* picks one. The widget follows the app.
 - **Colours:** from the Claudometer palette ([docs/palette.html](docs/palette.html)). Meters use Meter Coral; Attention amber and Over-limit red take over near limits; status pills (On track / Ahead of pace / Getting close / Near limit) use each status colour on its soft tint. Dark mode uses matching dark steps of the same hues.
 - **Warnings:** system orange and red appear only above your thresholds, always with an SF Symbol and a label.
 - **Menu bar icon:** monochrome like other system icons until usage needs attention.
-- **Actions:** full-width menu rows with keyboard shortcuts (⌘R, ⌘,, ⌘Q) and an accent-coloured hover highlight.
+- **Actions:** full-width menu rows with keyboard shortcuts (⌘R, ⌘,, ⌘Q) and a hover highlight (warm tint, or neutral on glass).
 - **Settings:** toolbar tabs (General, Notifications, Accounts, About) with grouped forms.
 - **Meters:** capacity rings and bars, like the Batteries widget. A 2pt tick marks how much of the window's time has passed, so you can see your pace.
 - **Usage by surface:** one stacked bar with a legend that lists each value. Series follow the palette order: Usage coral (Claude Code), plum (Chats), teal (Cowork). The dark steps were picked to keep the hues and still pass the data-viz colour-blind checks.

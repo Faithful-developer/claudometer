@@ -138,7 +138,12 @@ struct PopoverView: View {
             // Usage per day of the weekly limit, once there's more than a day of history.
             if snapshot != nil, store.history.daysWithData(windowId: weeklyId) >= 2 {
                 MenuDivider()
-                DailyUseSection(days: store.history.dailyUse(windowId: weeklyId, now: now), dimmed: stale)
+                let days = store.history.dailyUse(windowId: weeklyId, now: now)
+                // No budget on old data: it would be computed from a stale reading.
+                let budget = stale ? nil : snapshot?.weekly.flatMap {
+                    UsageHistory.dailyBudget(for: $0, todayUse: days.last?.percent ?? 0, now: now)
+                }
+                DailyUseSection(days: days, dimmed: stale, budget: budget)
             }
 
             if let breakdown = snapshot?.breakdown, breakdown.contains(where: { $0.percent > 0 }) {
@@ -747,12 +752,15 @@ final class HoverState: ObservableObject {
 struct DailyUseSection: View {
     let days: [UsageHistory.Day]
     let dimmed: Bool
+    /// Today's fair share of the weekly limit (`UsageHistory.dailyBudget`), if known.
+    let budget: Double?
     @StateObject private var hover: HoveredDay
 
     /// `hovered` seeds the highlighted day; only previews pass it, since `ImageRenderer` never hovers.
-    init(days: [UsageHistory.Day], dimmed: Bool = false, hovered: Int? = nil) {
+    init(days: [UsageHistory.Day], dimmed: Bool = false, budget: Double? = nil, hovered: Int? = nil) {
         self.days = days
         self.dimmed = dimmed
+        self.budget = budget
         _hover = StateObject(wrappedValue: HoveredDay(index: hovered))
     }
 
@@ -764,6 +772,7 @@ struct DailyUseSection: View {
                 Text(label)
                     .font(.system(size: 11).monospacedDigit())
                     .foregroundStyle(Ink.secondary)
+                    .help(budget == nil ? "" : tr("Daily budget: what was left of the weekly limit this morning, spread over the days until it resets."))
             }
             DailyBars(days: days, hovered: hover.index, dimmed: dimmed) { hover.index = $0 }
         }
@@ -772,7 +781,9 @@ struct DailyUseSection: View {
 
     private var label: String {
         guard let index = hover.index, days.indices.contains(index), index != days.count - 1 else {
-            return tr("Today %@", Formatters.percent(days.last?.percent ?? 0))
+            let today = Formatters.percent(days.last?.percent ?? 0)
+            // "Today 12% of 18%": today's use against today's fair share.
+            return budget.map { tr("Today %@ of %@", today, Formatters.percent($0)) } ?? tr("Today %@", today)
         }
         let day = days[index]
         return tr("%@ %@", DailyBars.weekday(day.date).capitalized(with: L10n.locale), Formatters.percent(day.percent))

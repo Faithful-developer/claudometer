@@ -57,7 +57,15 @@ public struct ThresholdTracker: Codable, Sendable {
     public enum Event: Hashable, Sendable {
         case crossed(window: LimitWindow, threshold: Int)
         case reset(window: LimitWindow)
+        /// At the current pace the limit runs out at `at`, well before it resets.
+        case forecast(window: LimitWindow, at: Date)
     }
+
+    /// A pace alert needs at least this much use: below it a fast start says little.
+    public static let forecastMinimumUse: Double = 50
+    /// …and must come at least this share of the window before the reset, so it's worth
+    /// changing course (30 min for the session, about 17 h for a week).
+    public static let forecastMinimumLead: Double = 0.1
 
     /// What has been notified for one window in its current cycle.
     public struct Cycle: Codable, Hashable, Sendable {
@@ -65,11 +73,25 @@ public struct ThresholdTracker: Codable, Sendable {
         public var fired: Set<Int>
         /// Reached the top threshold this cycle, so its rollover gets a "has reset" alert.
         public var nearLimit: Bool
+        /// The pace alert went out this cycle.
+        public var forecastFired: Bool
 
-        public init(resetsAt: Date?, fired: Set<Int> = [], nearLimit: Bool = false) {
+        public init(resetsAt: Date?, fired: Set<Int> = [], nearLimit: Bool = false, forecastFired: Bool = false) {
             self.resetsAt = resetsAt
             self.fired = fired
             self.nearLimit = nearLimit
+            self.forecastFired = forecastFired
+        }
+
+        private enum CodingKeys: String, CodingKey { case resetsAt, fired, nearLimit, forecastFired }
+
+        /// Written by hand so state saved by 0.4.x (no `forecastFired`) still loads.
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            resetsAt = try c.decodeIfPresent(Date.self, forKey: .resetsAt)
+            fired = try c.decode(Set<Int>.self, forKey: .fired)
+            nearLimit = try c.decode(Bool.self, forKey: .nearLimit)
+            forecastFired = try c.decodeIfPresent(Bool.self, forKey: .forecastFired) ?? false
         }
     }
 
@@ -101,10 +123,13 @@ public struct ThresholdTracker: Codable, Sendable {
         self.cycles = cycles
     }
 
-    public mutating func evaluate(_ snapshot: UsageSnapshot, thresholds: [Int], notifyReset: Bool) -> [Event] {
+    /// `forecast` gives when a window runs out at its current pace (nil: no pace alerts).
+    public mutating func evaluate(_ snapshot: UsageSnapshot, thresholds: [Int], notifyReset: Bool,
+                                  forecast: ((LimitWindow) -> Date?)? = nil) -> [Event] {
         var events: [Event] = []
         let sorted = thresholds.sorted()
         let top = sorted.last ?? 100
+        let first = sorted.first ?? top
 
         for window in snapshot.windows {
             var cycle = cycles[window.id] ?? Cycle(resetsAt: window.resetsAt)
@@ -122,6 +147,17 @@ public struct ThresholdTracker: Codable, Sendable {
                 events.append(.crossed(window: window, threshold: threshold))
             }
             if window.utilization >= Double(top) { cycle.nearLimit = true }
+
+            // Pace alert: once per cycle, only below the first threshold (above it the
+            // threshold alerts already speak), and only well before the reset.
+            if let forecast, !cycle.forecastFired,
+               window.utilization >= Self.forecastMinimumUse, window.utilization < Double(first),
+               let resetsAt = window.resetsAt, let length = window.windowLength,
+               let runsOut = forecast(window),
+               resetsAt.timeIntervalSince(runsOut) >= length * Self.forecastMinimumLead {
+                cycle.forecastFired = true
+                events.append(.forecast(window: window, at: runsOut))
+            }
             cycles[window.id] = cycle
         }
         prune(keeping: snapshot)

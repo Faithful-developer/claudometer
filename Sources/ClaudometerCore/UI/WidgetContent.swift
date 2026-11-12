@@ -32,6 +32,13 @@ public struct WidgetStyle: Codable, Sendable {
         self.refreshMinutes = refreshMinutes
     }
 
+    /// This style showing another limit as the main one (a widget's own choice in Edit Widget).
+    public func with(metric: MenuBarMetric?) -> WidgetStyle {
+        var copy = self
+        if let metric { copy.metric = metric }
+        return copy
+    }
+
     /// When data fetched at `fetched` turns stale for this style's refresh interval.
     public func staleAt(_ fetched: Date) -> Date {
         fetched.addingTimeInterval(UsageState.maxAge(refreshMinutes: refreshMinutes))
@@ -60,11 +67,15 @@ public struct UsageWidgetContent: View {
     let refreshControl: AnyView?
     /// The account shown, named when there's more than one (TZ F-2).
     let account: String?
+    /// Weekly use per day (large widget): shown where the breakdown would be when the plan has
+    /// none. Pass it only with at least two days of data.
+    let days: [UsageHistory.Day]?
 
     public init(size: WidgetSize, state: UsageState, now: Date, style: WidgetStyle, forecast: Date? = nil,
-                refreshControl: AnyView? = nil, account: String? = nil) {
+                refreshControl: AnyView? = nil, account: String? = nil, days: [UsageHistory.Day]? = nil) {
         self.forecast = forecast
         self.account = account
+        self.days = days
         self.size = size
         self.state = state
         self.now = now
@@ -265,6 +276,18 @@ public struct UsageWidgetContent: View {
                 VStack(alignment: .leading, spacing: 6) {
                     SectionHeader(tr("Usage by Surface This Week"))
                     BreakdownChart(rows: snapshot.breakdown, legend: others.count <= 1 ? .table : .inline, dimmed: isStale)
+                }
+            } else if let days, !days.isEmpty, others.count <= 2 {
+                // No breakdown on this plan: the weekly limit by day fills the space instead.
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline) {
+                        SectionHeader(tr("Weekly Limit by Day"))
+                        Spacer()
+                        Text(tr("Today %@", Formatters.percent(days.last?.percent ?? 0)))
+                            .font(.system(size: 11).monospacedDigit())
+                            .foregroundStyle(Ink.secondary)
+                    }
+                    DailyBars(days: days, dimmed: isStale)
                 }
             }
             Spacer(minLength: 0)

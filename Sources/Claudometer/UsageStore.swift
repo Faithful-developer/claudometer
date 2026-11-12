@@ -375,7 +375,7 @@ final class UsageStore {
         apply(UsageState(snapshot: snapshot, error: nil), to: account)
         let settings = AppSettings.current
         let label = notificationLabel(account)
-        notifications.process(snapshot, account: id, label: label, settings: settings)
+        notifications.process(snapshot, account: id, label: label, settings: settings, history: histories[id] ?? UsageHistory())
         notifications.processOutage(error: nil, fetchedAt: snapshot.fetchedAt, account: id, label: label, settings: settings)
     }
 

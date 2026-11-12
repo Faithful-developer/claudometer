@@ -21,6 +21,7 @@ enum SettingsKey {
     static let notifyLow = "notifyLow"
     static let notifyHigh = "notifyHigh"
     static let notifyReset = "notifyReset"
+    static let notifyForecast = "notifyForecast"
     static let notifyOutage = "notifyOutage"
     /// "system", "en" or "ru".
     static let language = "language"
@@ -59,6 +60,7 @@ struct AppSettings {
     var notifyLow: Int
     var notifyHigh: Int
     var notifyReset: Bool
+    var notifyForecast: Bool
     var notifyOutage: Bool
     var notifyUpdates: Bool
 
@@ -76,6 +78,7 @@ struct AppSettings {
         SettingsKey.notifyLow: 80,
         SettingsKey.notifyHigh: 95,
         SettingsKey.notifyReset: true,
+        SettingsKey.notifyForecast: true,
         SettingsKey.notifyOutage: true,
         SettingsKey.language: "system",
         SettingsKey.notifyUpdates: true,
@@ -101,6 +104,7 @@ struct AppSettings {
             notifyLow: d.integer(forKey: SettingsKey.notifyLow),
             notifyHigh: d.integer(forKey: SettingsKey.notifyHigh),
             notifyReset: d.bool(forKey: SettingsKey.notifyReset),
+            notifyForecast: d.bool(forKey: SettingsKey.notifyForecast),
             notifyOutage: d.bool(forKey: SettingsKey.notifyOutage),
             notifyUpdates: d.bool(forKey: SettingsKey.notifyUpdates)
         )

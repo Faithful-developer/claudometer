@@ -145,10 +145,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
     }
 
-    /// A widget click selects its account (`claudometer://open?account=<id>`) and refreshes,
-    /// and when the problem needs the user (login expired, signed out, …) also opens Settings
-    /// where it's fixed: the menu bar popover can't be opened from code, and an accessory app
-    /// would otherwise show nothing.
+    /// A widget click selects its account (`claudometer://open?account=<id>`), refreshes, and
+    /// opens the menu (TZ FR-14). When the problem needs the user (login expired, signed out, …)
+    /// it opens Settings instead, where it's fixed.
     func application(_ application: NSApplication, open urls: [URL]) {
         guard let url = urls.first(where: { $0.scheme == "claudometer" }) else { return }
         let account = URLComponents(url: url, resolvingAgainstBaseURL: false)?
@@ -160,8 +159,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             switch store.state.error {
             case .notSignedIn?, .tokenExpired?, .sessionKeyInvalid?, .keychainDenied?: SettingsWindow.open(tab: .login)
             case .apiChanged?: SettingsWindow.open(tab: .about)
-            default: break
+            default: await Self.openMenu()
             }
         }
+    }
+
+    /// Opens the menu bar menu. A click that launched the app arrives before the status item
+    /// exists, so it tries for about 2 s; if the icon still can't be seen (hidden behind the
+    /// notch or by a menu bar manager), Settings opens instead, as on a reopen from Finder.
+    @MainActor
+    private static func openMenu() async {
+        for _ in 0..<8 {
+            if MenuBarMenu.open() { return }
+            try? await Task.sleep(for: .milliseconds(250))
+        }
+        SettingsWindow.open(tab: .general)
     }
 }

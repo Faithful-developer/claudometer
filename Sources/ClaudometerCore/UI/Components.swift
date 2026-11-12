@@ -363,9 +363,18 @@ public struct DailyBars: View {
         self.onHover = onHover
     }
 
+    @Environment(\.widgetRenderingMode) private var renderingMode
+
     private var barFill: LinearGradient {
-        let colors = dimmed ? [Palette.staleFill, Palette.staleFill] : [Palette.coral, Palette.coralLight]
+        // Vibrant widgets keep only brightness: the bars are the brightest mark.
+        let colors = renderingMode != .fullColor ? [Color.primary, Color.primary]
+            : dimmed ? [Palette.staleFill, Palette.staleFill] : [Palette.coral, Palette.coralLight]
         return LinearGradient(colors: colors, startPoint: .bottom, endPoint: .top)
+    }
+
+    private var trackFill: Color {
+        if renderingMode != .fullColor { return Ink.trackVibrant }
+        return isOnGlass ? GlassFill.track(contrast) : Ink.track(contrast)
     }
 
     public var body: some View {
@@ -378,7 +387,7 @@ public struct DailyBars: View {
                 let isMarked = hovered.map { $0 == index } ?? isToday
                 VStack(spacing: 4) {
                     ZStack(alignment: .bottom) {
-                        Capsule().fill(isOnGlass ? GlassFill.track(contrast) : Ink.track(contrast))
+                        Capsule().fill(trackFill)
                         Capsule()
                             .fill(barFill)
                             .frame(height: day.percent > 0 ? max(30 * day.percent / top, 4) : 0)

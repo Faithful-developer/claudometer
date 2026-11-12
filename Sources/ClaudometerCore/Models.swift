@@ -17,20 +17,19 @@ public struct LimitWindow: Codable, Hashable, Identifiable, Sendable {
     /// Percent used, 0...100 (may exceed 100; clamp for display only).
     public let utilization: Double
     public let resetsAt: Date?
-    /// Server-provided severity (`normal`, `warning`, `critical`, …) if any.
-    public let severity: String?
+    // The API also sends a `severity` string; it was never read (levels come from the user's
+    // thresholds), so it isn't decoded. Saved 0.4.x state with the key still loads.
 
-    public init(id: String, group: LimitGroup, title: String, utilization: Double, resetsAt: Date?, severity: String? = nil) {
+    public init(id: String, group: LimitGroup, title: String, utilization: Double, resetsAt: Date?) {
         self.id = id
         self.group = group
         self.rawTitle = title
         self.utilization = utilization
         self.resetsAt = resetsAt
-        self.severity = severity
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, group, rawTitle = "title", utilization, resetsAt, severity
+        case id, group, rawTitle = "title", utilization, resetsAt
     }
 
     /// Model name of a model-scoped limit, e.g. "Fable" for `weekly_scoped:Fable`.
@@ -218,7 +217,7 @@ public struct UsageSnapshot: Codable, Hashable, Sendable {
         let updated = windows.map { window -> LimitWindow in
             guard let resetsAt = window.resetsAt, resetsAt <= now else { return window }
             return LimitWindow(id: window.id, group: window.group, title: window.rawTitle, utilization: 0,
-                               resetsAt: window.nextReset(after: resetsAt, now: now), severity: nil)
+                               resetsAt: window.nextReset(after: resetsAt, now: now))
         }
         return UsageSnapshot(windows: updated, breakdown: breakdown, plan: plan, fetchedAt: fetchedAt, source: source)
     }

@@ -43,6 +43,8 @@ enum PreviewRenderer {
         case "update": initial = highSample
         // Data two hours old without an error, e.g. polling that stalled.
         case "old": initial = oldSample
+        // A plan without the per-surface breakdown: the large widget shows the daily chart.
+        case "nobreakdown": initial = noBreakdownSample
         default: initial = nil
         }
         let updates = sample == "update"
@@ -151,8 +153,11 @@ enum PreviewRenderer {
                 let hero = store.state.snapshot?.window(for: style.metric)
                 let forecast = size == .large && store.state.error == nil
                     ? hero.flatMap { store.history.forecast(for: $0, at: store.state.snapshot!.fetchedAt) } : nil
+                let weeklyId = store.state.snapshot?.weekly?.id ?? "weekly_all"
+                let days = size == .large && store.history.daysWithData(windowId: weeklyId) >= 2
+                    ? store.history.dailyUse(windowId: weeklyId, now: Date()) : nil
                 let widget = UsageWidgetContent(size: size, state: store.state, now: Date(), style: style, forecast: forecast, refreshControl: AnyView(RefreshGlyph()),
-                                                account: store.hasManyAccounts ? store.selected.title : nil)
+                                                account: store.hasManyAccounts ? store.selected.title : nil, days: days)
                 writeWidget(widget, size: size, dark: name == "dark",
                             to: dir.appendingPathComponent("widget-\(size.rawValue)-\(name)\(suffix(sample, language)).png"))
                 // A widget whose account was removed in the app.
@@ -281,6 +286,12 @@ enum PreviewRenderer {
             windows: high.windows, breakdown: high.breakdown, plan: high.plan,
             fetchedAt: Date().addingTimeInterval(-2 * 3600)
         ))
+    }
+
+    /// The `high` figures without the "by surface" breakdown.
+    private static var noBreakdownSample: UsageState {
+        guard let high = highSample.snapshot else { return UsageState() }
+        return UsageState(snapshot: UsageSnapshot(windows: high.windows, breakdown: [], plan: high.plan, fetchedAt: high.fetchedAt))
     }
 
     /// Two other limits at 80%: the menu bar shows three rings.

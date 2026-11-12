@@ -37,8 +37,7 @@ public enum UsageDecoder {
                 group: group,
                 title: title(kind: kind, model: model),
                 utilization: percent,
-                resetsAt: date(item["resets_at"]),
-                severity: item["severity"] as? String
+                resetsAt: date(item["resets_at"])
             )
         }
     }

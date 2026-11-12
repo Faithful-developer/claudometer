@@ -255,6 +255,7 @@ struct NotificationSettings: View {
     @AppStorage(SettingsKey.notifyLow) private var notifyLow = 80
     @AppStorage(SettingsKey.notifyHigh) private var notifyHigh = 95
     @AppStorage(SettingsKey.notifyReset) private var notifyReset = true
+    @AppStorage(SettingsKey.notifyForecast) private var notifyForecast = true
     @AppStorage(SettingsKey.notifyOutage) private var notifyOutage = true
     @AppStorage(SettingsKey.notifyUpdates) private var notifyUpdates = true
 
@@ -269,6 +270,10 @@ struct NotificationSettings: View {
                 Group {
                     ThresholdSlider(title: tr("First alert"), symbol: "bell.fill", tint: Palette.warningGlyph, value: percent($notifyLow), range: 50...100)
                     ThresholdSlider(title: tr("Second alert"), symbol: "bell.badge.fill", tint: Palette.criticalGlyph, value: percent($notifyHigh), range: 50...100)
+                    Toggle(isOn: $notifyForecast) {
+                        Text(tr("Notify when the pace runs out a limit early"))
+                        Text(tr("Once per limit, from 50% used, when it would run out well before it resets."))
+                    }
                     Toggle(tr("Notify when a limit resets"), isOn: $notifyReset)
                 }
                 .disabled(!notificationsEnabled)

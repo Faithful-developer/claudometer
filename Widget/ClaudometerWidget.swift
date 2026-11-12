@@ -13,6 +13,8 @@ struct UsageEntry: TimelineEntry {
     let accountName: String?
     /// The account chosen in Edit Widget was removed in the app.
     var accountRemoved = false
+    /// The main limit chosen in Edit Widget; nil follows the menu bar.
+    var metric: MenuBarMetric? = nil
 }
 
 /// Reads the state the app writes to the shared folder, for the account picked in Edit Widget
@@ -26,7 +28,8 @@ struct UsageProvider: AppIntentTimelineProvider {
         let (account, name, removed) = Self.resolve(configuration)
         let state = SnapshotStore.default(account: account).load()
             ?? UsageState(snapshot: context.isPreview ? .placeholder : nil, error: nil)
-        return UsageEntry(date: Date(), state: state, account: account, accountName: name, accountRemoved: removed)
+        return UsageEntry(date: Date(), state: state, account: account, accountName: name, accountRemoved: removed,
+                          metric: configuration.metric.menuBarMetric)
     }
 
     /// Entries for 2 h so countdowns stay right between app reloads: every 5 min, every minute
@@ -44,7 +47,8 @@ struct UsageProvider: AppIntentTimelineProvider {
         // Each entry projects its own time, so a limit that resets while the app can't fetch
         // drops to 0% on schedule instead of showing the old figure.
         let entries = dates.map { date in
-            UsageEntry(date: date, state: state.projected(at: date), account: account, accountName: name, accountRemoved: removed)
+            UsageEntry(date: date, state: state.projected(at: date), account: account, accountName: name, accountRemoved: removed,
+                       metric: configuration.metric.menuBarMetric)
         }
         return Timeline(entries: entries, policy: .atEnd)
     }
@@ -93,10 +97,36 @@ struct AccountQuery: EntityQuery {
 
 struct SelectAccountIntent: WidgetConfigurationIntent {
     static var title: LocalizedStringResource = "Account"
-    static var description = IntentDescription("Choose the Claude account this widget shows.")
+    static var description = IntentDescription("Choose the Claude account and the limit this widget shows.")
 
     @Parameter(title: "Account")
     var account: AccountEntity?
+
+    /// Added in 0.5.0 with a default, so widgets placed earlier keep following the menu bar.
+    @Parameter(title: "Main Limit", default: .menuBar)
+    var metric: WidgetMetric
+}
+
+/// The limit a widget shows as its ring: the menu bar's choice, or one of its own.
+enum WidgetMetric: String, AppEnum {
+    case menuBar, session, weekly, highest
+
+    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Main Limit"
+    static var caseDisplayRepresentations: [WidgetMetric: DisplayRepresentation] = [
+        .menuBar: "Same as Menu Bar",
+        .session: "Session (5h)",
+        .weekly: "Weekly",
+        .highest: "Highest",
+    ]
+
+    var menuBarMetric: MenuBarMetric? {
+        switch self {
+        case .menuBar: return nil
+        case .session: return .session
+        case .weekly: return .weekly
+        case .highest: return .highest
+        }
+    }
 }
 
 extension UsageSnapshot {
@@ -148,7 +178,7 @@ struct WidgetView: View {
     let entry: UsageEntry
 
     var body: some View {
-        let style = Self.style
+        let style = Self.style.with(metric: entry.metric)
         // Same language as the app, even when it differs from the macOS one.
         let _ = L10n.resolve(style.language)
         if entry.accountRemoved {
@@ -165,8 +195,19 @@ struct WidgetView: View {
                 Button(intent: RefreshUsageIntent()) { RefreshGlyph() }
                     .buttonStyle(.plain)
             ),
-            account: entry.accountName
+            account: entry.accountName,
+            days: days
         )
+    }
+
+    /// Large widget only: weekly use per day, once there's more than a day of history. Shown
+    /// when the plan has no per-surface breakdown.
+    private var days: [UsageHistory.Day]? {
+        guard family == .systemLarge, entry.state.snapshot?.breakdown.contains(where: { $0.percent > 0 }) != true else { return nil }
+        let weeklyId = entry.state.snapshot?.weekly?.id ?? "weekly_all"
+        let history = HistoryStore.default(account: entry.account).load()
+        guard history.daysWithData(windowId: weeklyId) >= 2 else { return nil }
+        return history.dailyUse(windowId: weeklyId, now: entry.date)
     }
 
     /// Large widget only: when the main limit runs out at its recent pace, from the history the

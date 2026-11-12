@@ -160,6 +160,50 @@ private func json(_ string: String) -> Data { Data(string.utf8) }
         #expect(high == [.crossed(window: snapshot(96).windows[0], threshold: 95)])
     }
 
+    // MARK: Pace alert
+
+    /// A forecast that runs out `lead` before the reset.
+    func runsOut(_ lead: TimeInterval) -> (LimitWindow) -> Date? {
+        { $0.resetsAt?.addingTimeInterval(-lead) }
+    }
+
+    @Test func paceAlertFiresOncePerCycle() {
+        var tracker = ThresholdTracker()
+        let first = tracker.evaluate(snapshot(60), thresholds: [80, 95], notifyReset: true, forecast: runsOut(2 * 3600))
+        #expect(first == [.forecast(window: snapshot(60).windows[0], at: reset.addingTimeInterval(-2 * 3600))])
+        #expect(tracker.evaluate(snapshot(65), thresholds: [80, 95], notifyReset: true, forecast: runsOut(2 * 3600)).isEmpty)
+        // A new cycle can warn again.
+        let next = reset.addingTimeInterval(5 * 3600)
+        _ = tracker.evaluate(snapshot(1, resetsAt: next), thresholds: [80, 95], notifyReset: true, forecast: runsOut(2 * 3600))
+        let again = tracker.evaluate(snapshot(55, resetsAt: next), thresholds: [80, 95], notifyReset: true, forecast: runsOut(2 * 3600))
+        #expect(again.count == 1)
+    }
+
+    @Test func paceAlertNeedsUseLeadAndRoomBelowTheThreshold() {
+        // Under 50% used.
+        var low = ThresholdTracker()
+        #expect(low.evaluate(snapshot(40), thresholds: [80, 95], notifyReset: true, forecast: runsOut(2 * 3600)).isEmpty)
+        // At or above the first threshold: the threshold alert speaks instead.
+        var high = ThresholdTracker()
+        let events = high.evaluate(snapshot(85), thresholds: [80, 95], notifyReset: true, forecast: runsOut(2 * 3600))
+        #expect(events.allSatisfy { if case .forecast = $0 { return false } else { return true } })
+        // Runs out only 10 min early on a 5 h window (under 10%).
+        var close = ThresholdTracker()
+        #expect(close.evaluate(snapshot(60), thresholds: [80, 95], notifyReset: true, forecast: runsOut(10 * 60)).isEmpty)
+        // No forecast (idle, or the setting is off).
+        var none = ThresholdTracker()
+        #expect(none.evaluate(snapshot(60), thresholds: [80, 95], notifyReset: true, forecast: { _ in nil }).isEmpty)
+        #expect(none.evaluate(snapshot(60), thresholds: [80, 95], notifyReset: true).isEmpty)
+    }
+
+    /// State saved by 0.4.x has no `forecastFired`.
+    @Test func cyclesFromOlderBuildsStillLoad() throws {
+        let json = Data(#"{"cycles":{"session":{"resetsAt":0,"fired":[80],"nearLimit":false}}}"#.utf8)
+        let tracker = try JSONDecoder().decode(ThresholdTracker.self, from: json)
+        #expect(tracker.cycles["session"]?.fired == [80])
+        #expect(tracker.cycles["session"]?.forecastFired == false)
+    }
+
     @Test func jumpSkipsLowerThreshold() {
         var tracker = ThresholdTracker()
         let events = tracker.evaluate(snapshot(97), thresholds: [80, 95], notifyReset: false)
@@ -907,5 +951,37 @@ private func json(_ string: String) -> Data { Data(string.utf8) }
         #expect(Ink.secondary.resolve(in: environment) == Color(nsColor: .secondaryLabelColor))
         // Never the system tertiary (about 2.5:1).
         #expect(Ink.tertiary.resolve(in: environment) == Color(nsColor: .secondaryLabelColor))
+    }
+}
+
+@Suite struct DailyBudgetTests {
+    var calendar: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "UTC")!
+        return c
+    }
+    /// Midday UTC (2027-01-15 12:00).
+    let now = Date(timeIntervalSince1970: 1_800_014_400)
+
+    func weekly(_ used: Double, resetsIn days: Double) -> LimitWindow {
+        LimitWindow(id: "weekly_all", group: .weekly, title: "Weekly", utilization: used, resetsAt: now.addingTimeInterval(days * 86400))
+    }
+
+    @Test func spreadsWhatWasLeftThisMorning() throws {
+        // 40% used, 10 of it today; resets in 2.5 days, so today + 3 more days count.
+        let budget = try #require(UsageHistory.dailyBudget(for: weekly(40, resetsIn: 2.5), todayUse: 10, now: now, calendar: calendar))
+        #expect(abs(budget - 70.0 / 3) < 0.001)
+    }
+
+    @Test func lastDayGetsEverythingLeft() throws {
+        let budget = try #require(UsageHistory.dailyBudget(for: weekly(80, resetsIn: 0.25), todayUse: 5, now: now, calendar: calendar))
+        #expect(abs(budget - 25) < 0.001)
+    }
+
+    @Test func noneWhenUsedUpOrNoReset() {
+        #expect(UsageHistory.dailyBudget(for: weekly(100, resetsIn: 3), todayUse: 0, now: now, calendar: calendar) == nil)
+        #expect(UsageHistory.dailyBudget(for: weekly(50, resetsIn: -1), todayUse: 0, now: now, calendar: calendar) == nil)
+        let noReset = LimitWindow(id: "weekly_all", group: .weekly, title: "Weekly", utilization: 10, resetsAt: nil)
+        #expect(UsageHistory.dailyBudget(for: noReset, todayUse: 0, now: now, calendar: calendar) == nil)
     }
 }

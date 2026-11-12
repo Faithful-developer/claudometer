@@ -5,7 +5,7 @@
 "Claude Usage" = "Лимиты Claude";
 "See your Claude plan limits and when they reset." = "Смотрите лимиты плана Claude и время их сброса.";
 "Refresh Claude Usage" = "Обновить лимиты Claude";
-"Choose the Claude account this widget shows." = "Выберите аккаунт Claude для этого виджета.";
+"Choose the Claude account and the limit this widget shows." = "Выберите аккаунт Claude и лимит для этого виджета.";
 "Fetches your latest Claude plan usage." = "Загружает актуальные данные об использовании плана Claude.";
 
 /* Popover */
@@ -264,3 +264,13 @@
 "Not signed in to Claude Code, and the claude.ai session key couldn’t update either. Click Try Again." = "Вход в Claude Code не выполнен, и ключ сеанса claude.ai тоже не смог обновить данные. Нажмите «Повторить».";
 "Claude Code login expired, and the claude.ai session key couldn’t update either. Open Claude Code, or click Try Again." = "Вход в Claude Code истёк, и ключ сеанса claude.ai тоже не смог обновить данные. Откройте Claude Code или нажмите «Повторить».";
 "Sends an anonymous daily check-in to count active installs. You can turn it off in General." = "Раз в день отправляет анонимную отметку, чтобы считать активные установки. Это можно отключить в разделе «Основные».";
+
+/* 0.5.0 */
+"%@: Running Out Early" = "%@: закончится раньше";
+"%@ used so far." = "Использовано %@.";
+"Notify when the pace runs out a limit early" = "Уведомлять, если лимит закончится раньше срока";
+"Once per limit, from 50% used, when it would run out well before it resets." = "Один раз на лимит, начиная с 50%, если при текущем темпе он закончится заметно раньше сброса.";
+"Today %@ of %@" = "Сегодня %@ из %@";
+"Daily budget: what was left of the weekly limit this morning, spread over the days until it resets." = "Дневная норма: остаток недельного лимита на утро, поделённый на дни до сброса.";
+"Main Limit" = "Основной лимит";
+"Same as Menu Bar" = "Как в строке меню";

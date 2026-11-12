@@ -88,14 +88,18 @@ final class NotificationManager {
         return (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])) ?? false
     }
 
-    /// `label` names the account in the alert's title; nil while there's only one.
-    func process(_ snapshot: UsageSnapshot, account: String, label: String?, settings: AppSettings) {
+    /// `label` names the account in the alert's title; nil while there's only one. `history`
+    /// gives the pace for the "runs out early" alert.
+    func process(_ snapshot: UsageSnapshot, account: String, label: String?, settings: AppSettings, history: UsageHistory) {
         // Always evaluate so thresholds already passed before enabling do not fire later in bulk.
         var tracker = tracker(for: account)
         let events = tracker.evaluate(
             snapshot,
             thresholds: [settings.notifyLow, settings.notifyHigh],
-            notifyReset: settings.notifyReset
+            notifyReset: settings.notifyReset,
+            forecast: settings.notifyForecast
+                ? { history.forecast(for: $0, at: snapshot.fetchedAt, forAlert: true) }
+                : nil
         )
         trackers[account] = tracker
         persist(tracker, account: account)
@@ -185,6 +189,13 @@ final class NotificationManager {
             content.title = Self.titled(tr("%@ Has Reset", window.title), label: label)
             content.body = tr("You’re back to %@ used.", Formatters.percent(window.utilization))
             identifier = NotificationID.make(account: account, "\(window.id)|reset")
+        case .forecast(let window, let runsOut):
+            content.title = Self.titled(tr("%@: Running Out Early", window.title), label: label)
+            // "At this pace: limit at 14:20. Resets in 3h 10m. 62% used so far."
+            content.body = [Formatters.forecastText(runsOut), Formatters.resetText(window.resetsAt),
+                            tr("%@ used so far.", Formatters.percent(window.utilization))]
+                .joined(separator: ". ")
+            identifier = NotificationID.make(account: account, "\(window.id)|forecast")
         }
         center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
     }
