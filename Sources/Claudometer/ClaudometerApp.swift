@@ -31,6 +31,8 @@ struct ClaudometerApp: App {
             PopoverView()
                 .environment(store)
                 .environment(updates)
+                // macOS 26: the menu sits on the system's Liquid Glass; text and fills go native.
+                .environment(\.isOnGlass, Glass.isAvailable)
         } label: {
             MenuBarLabel(store: store, updates: updates)
         }
@@ -40,6 +42,8 @@ struct ClaudometerApp: App {
             SettingsView()
                 .environment(store)
                 .environment(updates)
+                // macOS 26: system label colours on the system form, like the menu.
+                .environment(\.isOnGlass, Glass.isAvailable)
         }
     }
 }

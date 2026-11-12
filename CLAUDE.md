@@ -7,7 +7,7 @@ macOS menu bar app + WidgetKit widget showing Claude plan usage limits. Spec: `T
 ### Design Principles
 - Design checklist: `context/design-principles.md`
 - Style guide and colour tokens: `context/style-guide.md` (source palette: `docs/palette.html`)
-- Refer to both for any UI change. Colours come only from `Palette` / `Ink` in `Sources/ClaudometerCore/UI/Palette.swift`.
+- Refer to both for any UI change. Colours come only from `Palette` / `Ink` in `Sources/ClaudometerCore/UI/Palette.swift`, and on macOS 26 glass from `GlassFill` (`UI/Glass.swift`; see the Liquid Glass section of the style guide).
 - Command Line Tools only: no SwiftUI `@State` or `@Entry` macros (use `@StateObject` / `EnvironmentKey`).
 - UI text goes through `tr("English text")` (`Sources/ClaudometerCore/L10n.swift`), never a bare SwiftUI literal; add the Russian to `Resources/Localization/ru.lproj` (a test fails on missing keys).
 

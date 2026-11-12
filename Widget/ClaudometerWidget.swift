@@ -132,7 +132,9 @@ struct ClaudometerWidget: Widget {
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: "ClaudometerWidget", intent: SelectAccountIntent.self, provider: UsageProvider()) { entry in
             WidgetView(entry: entry)
-                .containerBackground(Palette.surface, for: .widget)
+                // macOS 26: system background and system text colours, like Apple's widgets.
+                .environment(\.isOnGlass, Glass.isAvailable)
+                .containerBackground(for: .widget) { WidgetBackground() }
                 .widgetURL(URL(string: "claudometer://open?account=\(entry.account.id)"))
         }
         .configurationDisplayName("Claude Usage")

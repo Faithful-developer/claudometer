@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 @testable import ClaudometerCore
 
@@ -892,5 +893,19 @@ private func json(_ string: String) -> Data { Data(string.utf8) }
         let data = try JSONEncoder().encode(CheckIn(id: "abc", version: "0.2.2", language: "ru", os: "26.0"))
         let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: String])
         #expect(object == ["id": "abc", "version": "0.2.2", "language": "ru", "os": "26.0"])
+    }
+}
+
+@Suite struct GlassTests {
+    /// Text tokens keep the palette on opaque surfaces and take the system label colours on glass.
+    @Test func inkFollowsTheSurface() {
+        var environment = EnvironmentValues()
+        #expect(Ink.primary.resolve(in: environment) == Ink.primary.color)
+        #expect(Ink.tertiary.resolve(in: environment) == Ink.tertiary.color)
+        environment.isOnGlass = true
+        #expect(Ink.primary.resolve(in: environment) == Color(nsColor: .labelColor))
+        #expect(Ink.secondary.resolve(in: environment) == Color(nsColor: .secondaryLabelColor))
+        // Never the system tertiary (about 2.5:1).
+        #expect(Ink.tertiary.resolve(in: environment) == Color(nsColor: .secondaryLabelColor))
     }
 }

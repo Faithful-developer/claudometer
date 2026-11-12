@@ -25,7 +25,7 @@ public enum Palette {
     /// Fill for last known (stale) data: meters, rings, daily bars and the breakdown, so the
     /// same state looks the same everywhere. Secondary ink, 5.87 / 5.68:1 vs track; the old
     /// `seriesOther` grey was under 3:1 there.
-    public static var staleFill: Color { Ink.secondary }
+    public static var staleFill: Color { Ink.secondary.color }
     public static let plum = dynamic(light: 0x51405F, dark: 0x7D539D)
 
     // Surfaces
@@ -93,7 +93,7 @@ public enum Palette {
         case .ok: return coral
         case .warning: return warningGlyph
         case .critical: return criticalGlyph
-        case .unknown: return Ink.secondary
+        case .unknown: return Ink.secondary.color
         }
     }
 
@@ -123,10 +123,13 @@ public enum Palette {
 ///   tertiary  light #6E6E79  4.66 /  5.04   dark #8D8D97  5.09 /  4.62
 /// Every step passes 4.5:1 and each stays visibly lighter (dark: dimmer) than the one above.
 /// Under Increase Contrast tertiary takes the secondary value.
+///
+/// The text steps are `InkStyle`s: on glass (`isOnGlass`) they become the system label colours.
+/// `.color` gives the palette value where a plain `Color` is needed.
 public enum Ink {
-    public static let primary = Palette.dynamic(light: 0x20202B, dark: 0xF1EFEA)
-    public static let secondary = Palette.dynamic(light: 0x5A5A66, dark: 0xAEAEB8)
-    public static let tertiary = Palette.dynamic(light: 0x6E6E79, dark: 0x8D8D97, lightHC: 0x5A5A66, darkHC: 0xAEAEB8)
+    public static let primary = InkStyle(level: .primary, color: Palette.dynamic(light: 0x20202B, dark: 0xF1EFEA))
+    public static let secondary = InkStyle(level: .secondary, color: Palette.dynamic(light: 0x5A5A66, dark: 0xAEAEB8))
+    public static let tertiary = InkStyle(level: .tertiary, color: Palette.dynamic(light: 0x6E6E79, dark: 0x8D8D97, lightHC: 0x5A5A66, darkHC: 0xAEAEB8))
     /// Track behind meters and rings.
     public static var track: Color { Palette.track }
     /// Ring track in accented/vibrant widget rendering, where the system replaces our
@@ -134,7 +137,7 @@ public enum Ink {
     public static let trackVibrant = Color.primary.opacity(0.25)
 
     /// Environment-aware helpers for views that read `\.colorSchemeContrast`.
-    public static func tertiary(_ contrast: ColorSchemeContrast) -> Color {
+    public static func tertiary(_ contrast: ColorSchemeContrast) -> InkStyle {
         contrast == .increased ? secondary : tertiary
     }
     public static func track(_ contrast: ColorSchemeContrast) -> Color {

@@ -16,15 +16,19 @@ struct PopoverView: View {
     @Environment(\.isPreviewRender) private var isPreviewRender
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.isOnGlass) private var isOnGlass
     @AppStorage(SettingsKey.language) private var language = "system"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             if store.hasManyAccounts {
-                AccountSwitcher()
-                    .padding(.horizontal, 14)
-                    .padding(.bottom, 6)
+                Group {
+                    // `ImageRenderer` can't draw the system control; renders use the drawn one.
+                    if isOnGlass && !isPreviewRender { GlassAccountSwitcher() } else { AccountSwitcher() }
+                }
+                .padding(.horizontal, 14)
+                .padding(.bottom, 6)
             }
             // Countdowns tick every 30 s without a network call (FR-9).
             TimelineView(.periodic(from: .now, by: 30)) { context in
@@ -37,7 +41,8 @@ struct PopoverView: View {
         // Rebuilt in a new language; `tr` reads it when the views are created.
         .id(language)
         .frame(width: 300)
-        .background { if !isPreviewRender { MenuBackground() } }
+        // On glass (macOS 26) the window keeps the system's own material: no painted wash.
+        .background { if !isPreviewRender && !isOnGlass { MenuBackground() } }
         .fitsMenuWindowHeight()
     }
 
@@ -377,13 +382,14 @@ struct CopyableLimitStyle: ButtonStyle {
     private struct CopyableLimitBody: View {
         let configuration: ButtonStyleConfiguration
         @StateObject private var hover = HoverState()
+        @Environment(\.isOnGlass) private var isOnGlass
 
         var body: some View {
             configuration.label
                 .environment(\.isRowHighlighted, hover.isOn)
                 .background {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(hover.isOn ? (configuration.isPressed ? Palette.rowPressed : Palette.rowHover) : Color.clear)
+                        .fill(RowHighlight.fill(hovered: hover.isOn, pressed: configuration.isPressed, onGlass: isOnGlass))
                 }
                 .onHover { hover.isOn = $0 }
         }
@@ -447,6 +453,43 @@ struct AccountSwitcher: View {
         .background(Palette.track, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(tr("Accounts"))
+    }
+}
+
+/// The account switcher on glass: the system segmented control, which takes the glass look
+/// itself. ⌘1…⌘4 still switch; an account that needs attention gets the warning symbol.
+struct GlassAccountSwitcher: View {
+    @Environment(UsageStore.self) private var store
+
+    var body: some View {
+        let selection = Binding(get: { store.selectedID }, set: { store.select($0) })
+        Picker(tr("Accounts"), selection: selection) {
+            ForEach(store.accounts, id: \.id) { account in
+                let needsAction = store.state(of: account.id).error?.needsUserAction ?? false
+                Group {
+                    if needsAction {
+                        Text("\(Image(systemName: "exclamationmark.triangle.fill")) \(account.title)")
+                    } else {
+                        Text(account.title)
+                    }
+                }
+                .help(account.title)
+                .accessibilityLabel(needsAction ? tr("%@, needs attention", account.title) : account.title)
+                .tag(account.id)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .frame(maxWidth: .infinity)
+        .background {
+            // Invisible buttons that carry the ⌘1…⌘4 shortcuts.
+            ForEach(Array(store.accounts.prefix(9).enumerated()), id: \.element.id) { index, account in
+                Button("") { store.select(account.id) }
+                    .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
+                    .opacity(0)
+                    .accessibilityHidden(true)
+            }
+        }
     }
 }
 
@@ -610,6 +653,7 @@ struct MenuRowStyle: ButtonStyle {
         let configuration: ButtonStyleConfiguration
         @StateObject private var hover = HoverState()
         @Environment(\.isEnabled) private var isEnabled
+        @Environment(\.isOnGlass) private var isOnGlass
 
         var body: some View {
             configuration.label
@@ -617,7 +661,7 @@ struct MenuRowStyle: ButtonStyle {
                 .foregroundStyle(Ink.primary)
                 .background {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(hover.isOn && isEnabled ? (configuration.isPressed ? Palette.rowPressed : Palette.rowHover) : Color.clear)
+                        .fill(RowHighlight.fill(hovered: hover.isOn && isEnabled, pressed: configuration.isPressed, onGlass: isOnGlass))
                 }
                 .opacity(isEnabled ? 1 : 0.4)
                 .padding(.horizontal, 5)
@@ -652,6 +696,46 @@ struct UpdateProgressRow: View {
         .accessibilityLabel(title)
         .accessibilityValue(Formatters.percent(fraction * 100))
     }
+}
+
+/// Row highlight fill: the warm palette tint on the opaque menu, a neutral system-style fill
+/// on glass (brand colour stays off controls there, HIG Liquid Glass › Color on glass).
+enum RowHighlight {
+    static func fill(hovered: Bool, pressed: Bool, onGlass: Bool) -> Color {
+        guard hovered else { return .clear }
+        if onGlass { return pressed ? GlassFill.pressed : GlassFill.hover }
+        return pressed ? Palette.rowPressed : Palette.rowHover
+    }
+}
+
+private struct NoticeBackground: ViewModifier {
+    @Environment(\.isOnGlass) private var isOnGlass
+
+    func body(content: Content) -> some View {
+        // Glass corners are rounder (macOS 26 concentric shapes); the opaque menu keeps 8.
+        content.background(isOnGlass ? GlassFill.inset : Palette.track, in: RoundedRectangle(cornerRadius: isOnGlass ? 12 : 8, style: .continuous))
+    }
+}
+
+private struct NoticeButton: ViewModifier {
+    @Environment(\.isOnGlass) private var isOnGlass
+    @Environment(\.isPreviewRender) private var isPreviewRender
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26, *), isOnGlass, !isPreviewRender {
+            // The system glass button: one material, its own hover and press.
+            content.buttonStyle(.glass).controlSize(.small)
+        } else {
+            content.buttonStyle(NoticeButtonStyle())
+        }
+    }
+}
+
+extension View {
+    /// Inset box behind a notice: track on the opaque menu, a light neutral fill on glass.
+    func noticeBackground() -> some View { modifier(NoticeBackground()) }
+    /// Glass button on macOS 26 glass, the drawn bordered button elsewhere (and in renders).
+    func noticeButtonStyle() -> some View { modifier(NoticeButton()) }
 }
 
 /// `@State` needs the SwiftUI macro plugin, which the Command Line Tools lack.
@@ -732,7 +816,7 @@ struct ErrorNotice: View {
                     HStack(spacing: 6) {
                         ForEach(recoveries, id: \.self) { recovery in
                             Button(recovery.title) { perform(recovery) }
-                                .buttonStyle(NoticeButtonStyle())
+                                .noticeButtonStyle()
                         }
                     }
                     .padding(.top, 6)
@@ -741,7 +825,7 @@ struct ErrorNotice: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Palette.track, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .noticeBackground()
     }
 
     private var icon: String {
@@ -775,14 +859,14 @@ struct StaleNotice: View {
                 Text(tr("Usage may have changed since."))
                     .font(.system(size: 11)).foregroundStyle(Ink.secondary)
                 Button(isLoading ? tr("Updating…") : tr("Refresh Now"), action: refresh)
-                    .buttonStyle(NoticeButtonStyle())
+                    .noticeButtonStyle()
                     .disabled(isLoading)
                     .padding(.top, 6)
             }
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Palette.track, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .noticeBackground()
     }
 }
 

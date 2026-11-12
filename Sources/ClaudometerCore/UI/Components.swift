@@ -36,6 +36,8 @@ public struct MeterBar: View {
     let height: CGFloat
     let halo: Color
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.isOnGlass) private var isOnGlass
+    @Environment(\.widgetRenderingMode) private var renderingMode
 
     /// `halo` is the colour behind the meter (canvas in the popover, surface on widgets); it
     /// outlines the pace tick so the tick reads over both the track and the fill.
@@ -52,18 +54,18 @@ public struct MeterBar: View {
             let width = proxy.size.width
             let clamped = min(max(fraction, 0), 1)
             ZStack(alignment: .leading) {
-                Capsule().fill(Ink.track(contrast))
+                Capsule().fill(trackStyle)
                 Capsule()
-                    // The value end is the strongest coral; the gradient lightens towards zero.
-                    .fill(level == .ok
-                        ? AnyShapeStyle(LinearGradient(colors: [Palette.coralLight, Palette.coral], startPoint: .leading, endPoint: .trailing))
-                        : AnyShapeStyle(Palette.fill(for: level)))
+                    .fill(fillStyle)
                     .frame(width: clamped > 0 ? max(width * clamped, height) : 0)
                     .widgetAccentable()
                 if let elapsed {
                     let x = min(max(width * elapsed - 1, 1), width - 3)
+                    // On glass there's no one background colour to match, so the halo cuts a
+                    // clear gap through the track and fill instead.
                     Capsule()
-                        .fill(halo)
+                        .fill(isOnGlass ? Color.black : halo)
+                        .blendMode(isOnGlass ? .destinationOut : .normal)
                         .frame(width: 4, height: height + 8)
                         .offset(x: x - 1)
                     Capsule()
@@ -72,10 +74,26 @@ public struct MeterBar: View {
                         .offset(x: x)
                 }
             }
+            .compositingGroup()
             .frame(height: height)
             .frame(maxHeight: .infinity)
         }
         .frame(height: elapsed == nil ? height : height + 8)
+    }
+
+    private var trackStyle: Color {
+        if renderingMode != .fullColor { return Ink.trackVibrant }
+        return isOnGlass ? GlassFill.track(contrast) : Ink.track(contrast)
+    }
+
+    private var fillStyle: AnyShapeStyle {
+        // Vibrant: only brightness survives, so the fill is the brightest thing on a dim track.
+        if renderingMode != .fullColor { return AnyShapeStyle(Color.primary) }
+        // The value end is the strongest coral; the gradient lightens towards zero.
+        if level == .ok {
+            return AnyShapeStyle(LinearGradient(colors: [Palette.coralLight, Palette.coral], startPoint: .leading, endPoint: .trailing))
+        }
+        return AnyShapeStyle(Palette.fill(for: level))
     }
 }
 
@@ -87,6 +105,7 @@ public struct RingGauge<Label: View>: View {
     let highlighted: Bool
     let label: Label
     @Environment(\.widgetRenderingMode) private var renderingMode
+    @Environment(\.isOnGlass) private var isOnGlass
 
     /// `highlighted`: the ring sits on a hovered row, where the usual track nearly matches the
     /// tint (1.11:1), so it steps up to the Increase Contrast track (1.31:1).
@@ -100,6 +119,7 @@ public struct RingGauge<Label: View>: View {
 
     private var trackColor: Color {
         guard renderingMode == .fullColor else { return Ink.trackVibrant }
+        if isOnGlass { return GlassFill.ringTrack(highlighted: highlighted) }
         return highlighted ? Palette.trackIncreased : Palette.ringTrack
     }
 
@@ -120,7 +140,9 @@ public struct RingGauge<Label: View>: View {
 
     /// Stale rings use `Palette.staleFill`, like every other stale chart. The "Last known"
     /// label says why it is grey.
-    private var fillColor: Color { Palette.fill(for: level) }
+    private var fillColor: Color {
+        renderingMode == .fullColor ? Palette.fill(for: level) : .primary
+    }
 
     /// Any value above zero draws at least one stroke width of arc, so 1% reads as the start
     /// of an arc rather than a round-cap dot. 0% draws nothing and the track shows the scale.
@@ -176,8 +198,12 @@ public struct StatusLabel: View {
         self.stale = stale
     }
 
+    @Environment(\.isOnGlass) private var isOnGlass
+
     public var body: some View {
-        if let (symbol, text, color, tint) = content {
+        if let (symbol, text, color, paletteTint) = content {
+            // The grey (stale) pill is a neutral inset on glass; status tints stay.
+            let tint = isOnGlass && stale ? GlassFill.inset : paletteTint
             HStack(spacing: 4) {
                 Image(systemName: symbol).foregroundStyle(color)
                 Text(text).foregroundStyle(Ink.primary)
@@ -194,7 +220,7 @@ public struct StatusLabel: View {
         if stale {
             guard let symbol = Palette.symbol(for: level), let label = Formatters.levelLabel(level) else { return nil }
             // Grey glyph, like the row tags: the level is history, not an alert.
-            return (symbol, tr("Last known: %@", label), Ink.secondary, Palette.track)
+            return (symbol, tr("Last known: %@", label), Ink.secondary.color, Palette.track)
         }
         switch level {
         case .critical: return ("exclamationmark.octagon.fill", tr("Near limit"), Palette.criticalGlyph, Palette.criticalSoft)
@@ -225,7 +251,7 @@ public struct LevelTag: View {
     public var body: some View {
         if let symbol = Palette.symbol(for: level) {
             HStack(spacing: 3) {
-                Image(systemName: symbol).foregroundStyle(stale ? Ink.secondary : Palette.glyph(for: level))
+                Image(systemName: symbol).foregroundStyle(stale ? AnyShapeStyle(Ink.secondary) : AnyShapeStyle(Palette.glyph(for: level)))
                 // "Getting close" is about now; on last known data the grey glyph says enough.
                 if showsText, !stale, let label = Palette.label(for: level) {
                     Text(label).foregroundStyle(Ink.secondary)
@@ -258,7 +284,7 @@ public struct BreakdownChart: View {
         dimmed ? Palette.staleFill : Palette.color(forBreakdownKey: row.key)
     }
 
-    private var valueInk: Color { dimmed ? Ink.secondary : Ink.primary }
+    private var valueInk: InkStyle { dimmed ? Ink.secondary : Ink.primary }
 
     public var body: some View {
         let total = max(rows.reduce(0) { $0 + $1.percent }, 1)
@@ -327,6 +353,7 @@ public struct DailyBars: View {
     let dimmed: Bool
     let onHover: ((Int?) -> Void)?
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.isOnGlass) private var isOnGlass
 
     /// `dimmed` (stale data): grey bars, like the other charts.
     public init(days: [UsageHistory.Day], hovered: Int? = nil, dimmed: Bool = false, onHover: ((Int?) -> Void)? = nil) {
@@ -351,7 +378,7 @@ public struct DailyBars: View {
                 let isMarked = hovered.map { $0 == index } ?? isToday
                 VStack(spacing: 4) {
                     ZStack(alignment: .bottom) {
-                        Capsule().fill(Ink.track(contrast))
+                        Capsule().fill(isOnGlass ? GlassFill.track(contrast) : Ink.track(contrast))
                         Capsule()
                             .fill(barFill)
                             .frame(height: day.percent > 0 ? max(30 * day.percent / top, 4) : 0)

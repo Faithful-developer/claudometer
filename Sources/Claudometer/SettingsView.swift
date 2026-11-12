@@ -181,7 +181,7 @@ struct GeneralSettings: View {
                 }
                 Toggle(tr("Show percentage"), isOn: Binding(get: { !compact }, set: { compact = !$0 }))
                 Toggle(tr("Show other limits when high"), isOn: $extraRings)
-                ThresholdSlider(title: tr("At or above"), symbol: "circle.dotted", tint: Ink.secondary, value: $extraThreshold, range: 50...100)
+                ThresholdSlider(title: tr("At or above"), symbol: "circle.dotted", tint: Ink.secondary.color, value: $extraThreshold, range: 50...100)
                     .disabled(!extraRings)
             } header: {
                 Text(tr("Menu Bar"))

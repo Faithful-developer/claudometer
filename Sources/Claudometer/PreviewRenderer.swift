@@ -91,6 +91,22 @@ enum PreviewRenderer {
                 write(image, scale: pixelScale, to: dir.appendingPathComponent("popover-\(name)\(suffix(sample, language)).png"))
             }
 
+            // The macOS 26 glass variant: system text colours and neutral fills. `ImageRenderer`
+            // can't draw the material, so a plain window colour stands in for it; check the
+            // real glass in the running app.
+            let glassView = PopoverView()
+                .environment(store)
+                .environment(updates)
+                .environment(\.isOnGlass, true)
+                .background(Color(nsColor: .windowBackgroundColor))
+                .environment(\.colorScheme, name == "dark" ? .dark : .light)
+                .environment(\.isPreviewRender, true)
+            let glassRenderer = ImageRenderer(content: glassView)
+            glassRenderer.scale = pixelScale
+            if let image = glassRenderer.nsImage {
+                write(image, scale: pixelScale, to: dir.appendingPathComponent("popover-glass-\(name)\(suffix(sample, language)).png"))
+            }
+
             // The weekly chart with a day under the pointer; hover never fires in ImageRenderer.
             let weeklyId = store.state.snapshot?.weekly?.id ?? "weekly_all"
             if store.history.daysWithData(windowId: weeklyId) >= 2 {
@@ -159,9 +175,11 @@ enum PreviewRenderer {
         let widget = content
             .padding(16)
             .frame(width: size.size.width, height: size.size.height)
-            .background(Palette.surface)
+            // Same background and text colours as the real widget on this system.
+            .background(WidgetBackground())
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             .padding(12)
+            .environment(\.isOnGlass, Glass.isAvailable)
             .environment(\.colorScheme, dark ? .dark : .light)
         let renderer = ImageRenderer(content: widget)
         renderer.scale = pixelScale

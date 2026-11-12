@@ -34,6 +34,16 @@ Rules:
 - Status (amber, red) only appears above the thresholds and always comes with an SF Symbol and a label.
 - The menu bar icon is a monochrome template image unless the level is warning or critical.
 
+## Liquid Glass (macOS 26 and later)
+Source: `agents/apple-design-skill-main/references/hig/liquid-glass.md`. Older macOS keeps everything above.
+- Glass is only for the functional layer. The menu window keeps the system's own material: no `MenuBackground` wash on top. The notice buttons are `.buttonStyle(.glass)` and the account switcher is the system segmented control. Rings, meters, charts, rows and pills never get glass.
+- `isOnGlass` (environment) marks system surfaces: the menu, Settings, and the macOS 26 widget, which uses the system background (`WidgetBackground`). There the `Ink` text steps resolve to `labelColor` / `secondaryLabelColor`; tertiary also takes secondary, since the system tertiary is under 4.5:1. Vibrant widgets (the desktop behind windows) resolve the same way.
+- Fills on glass come from `GlassFill`: neutral, see-through (`Color.primary` at low opacity) so they adapt to whatever is behind. Hover 9%, pressed 15%, inset boxes 6%, meter track 10% (22% Increase Contrast), ring track 16% (24% on a hovered row). The warm `rowHover` / `trackHover` tints stay for the opaque menu only.
+- Brand coral, status colours and series colours stay on data and status, never on controls (HIG Liquid Glass › Color on glass).
+- The pace tick's halo is a cut-out on glass (`.destinationOut`), since there's no single background colour to match.
+- Vibrant widgets: meter and ring fills are `Color.primary` on `Ink.trackVibrant`, so the value is the brightest mark.
+- `ImageRenderer` can't draw the material or the native glass controls. `popover-glass-*` renders show the glass colours over the window colour, with the drawn controls in place of the native ones. Check the real look in the running app.
+
 ## Typography (SF Pro, system font)
 - Popover title 13 bold. Row titles 13 regular. Values 13 medium monospaced digits. Captions 11–12. Section headers 11 semibold, secondary, Title Case.
 - Percent figures use SF Rounded semibold, with the "%" at 55% size in secondary ink.
@@ -41,7 +51,7 @@ Rules:
 ## Shape & spacing
 - Popover width 300. Horizontal padding 14. Section vertical padding 8. Dividers are inset by 14.
 - Stale rings fill with `Ink.secondary`; non-zero values draw at least one stroke width of arc.
-- Meters are 6pt capsules (widgets 5pt) with a 2pt pace tick in secondary ink, outlined by a 1pt halo of the background colour. Rings use a 7–10pt round-cap stroke.
+- Meters are 6pt capsules (widgets 5pt) with a 2pt pace tick in secondary ink, outlined by a 1pt halo of the background colour (a cut-out on glass). Rings use a 7–10pt round-cap stroke.
 - Menu-style rows are 24pt tall, with a 6pt continuous corner radius on hover.
 - Status pills: capsule, 8×3 padding, 11pt semibold.
 - Account switcher (2+ accounts): a 24pt track (`Palette.track`, 8pt radius, 2pt inset) of equal segments, 12pt text; the selected one is `Palette.surface` with a `Palette.border` outline and semibold text and keeps its full name first.

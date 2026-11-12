@@ -158,7 +158,7 @@ public struct UsageWidgetContent: View {
         .overlay(alignment: .topLeading) {
             if let account {
                 Text(account)
-                    .font(.system(size: 10))
+                    .font(.system(size: 11))
                     .foregroundStyle(Ink.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -186,12 +186,12 @@ public struct UsageWidgetContent: View {
                     .lineLimit(1)
                 if let hero {
                     Text(Formatters.resetText(hero.resetsAt, now: now))
-                        .font(.system(size: 10))
+                        .font(.system(size: 11))
                         .foregroundStyle(Ink.secondary)
                         .lineLimit(1)
                 }
                 StatusLabel(level: level, pace: hero?.pace(now: now), stale: isStale)
-                    .font(.system(size: 10))
+                    .font(.system(size: 11))
                     .scaleEffect(0.92)
             }
             .frame(minWidth: 96)
@@ -237,7 +237,7 @@ public struct UsageWidgetContent: View {
                             .font(.system(size: 11)).foregroundStyle(Ink.secondary)
                         if let forecast, !isStale {
                             Text(Formatters.forecastText(forecast, now: now))
-                                .font(.system(size: 10)).foregroundStyle(Ink.secondary)
+                                .font(.system(size: 11)).foregroundStyle(Ink.secondary)
                                 .lineLimit(1).minimumScaleFactor(0.9)
                         }
                         StatusLabel(level: level, pace: hero.pace(now: now), stale: isStale)
@@ -248,7 +248,7 @@ public struct UsageWidgetContent: View {
                 if noSessionCaption {
                     // Why there's no session ring, as in the popover (TZ FR-34).
                     Text(tr("No 5-hour session limit on this plan"))
-                        .font(.system(size: 10))
+                        .font(.system(size: 11))
                         .foregroundStyle(Ink.secondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.9)
@@ -294,7 +294,7 @@ public struct UsageWidgetContent: View {
             MeterBar(fraction: window.utilization / 100, level: style.fillLevel(window, stale: isStale), elapsed: window.elapsedFraction(now: now), height: 5)
             if caption {
                 Text([isStale ? nil : Palette.label(for: level), Formatters.resetText(window.resetsAt, now: now)].compactMap { $0 }.joined(separator: " · "))
-                    .font(.system(size: 10))
+                    .font(.system(size: 11))
                     .foregroundStyle(Ink.secondary)
                     .lineLimit(1)
             }
@@ -332,7 +332,7 @@ public struct UsageWidgetContent: View {
                 refreshControl
             }
         }
-        .font(.system(size: 10))
+        .font(.system(size: 11))
         .lineLimit(1)
     }
 
