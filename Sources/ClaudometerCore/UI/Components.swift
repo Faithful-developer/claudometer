@@ -343,7 +343,9 @@ public struct DailyBars: View {
 
     public var body: some View {
         let top = max(days.map(\.percent).max() ?? 0, 10)
-        HStack(alignment: .bottom, spacing: 6) {
+        // No spacing: the columns tile the width exactly, so x / column width is the day.
+        // The bars are narrow and centred, so they still sit apart.
+        HStack(alignment: .bottom, spacing: 0) {
             ForEach(Array(days.enumerated()), id: \.offset) { index, day in
                 let isToday = index == days.count - 1
                 let isMarked = hovered.map { $0 == index } ?? isToday
@@ -360,10 +362,26 @@ public struct DailyBars: View {
                         .foregroundStyle(isMarked ? Ink.primary : Ink.tertiary(contrast))
                 }
                 .frame(maxWidth: .infinity)
-                .contentShape(Rectangle())
-                .onHover { inside in
-                    // Leaving one column can arrive after entering the next; only clear our own.
-                    if inside { onHover?(index) } else if hovered == index { onHover?(nil) }
+            }
+        }
+        // One hover area for the whole chart, the day picked by the pointer's x. Per-column
+        // hover left the gaps between columns unowned (the pointer between M and T fell back
+        // to today), and a column's late "exit" could clear the day just entered.
+        .overlay {
+            if let onHover, !days.isEmpty {
+                GeometryReader { proxy in
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onContinuousHover(coordinateSpace: .local) { phase in
+                            switch phase {
+                            case .active(let location):
+                                let column = proxy.size.width / CGFloat(days.count)
+                                let index = min(max(Int(location.x / max(column, 1)), 0), days.count - 1)
+                                if index != hovered { onHover(index) }
+                            case .ended:
+                                onHover(nil)
+                            }
+                        }
                 }
             }
         }
