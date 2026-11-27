@@ -217,11 +217,11 @@ struct WidgetView: View {
     }
 
     /// Large widget only: when the main limit runs out at its recent pace, from the history the
-    /// app writes next to the usage state.
+    /// app writes next to the usage state; hidden once its time has passed.
     private func forecast(_ style: WidgetStyle, history: UsageHistory?) -> Date? {
         guard let history, let snapshot = entry.state.snapshot, entry.state.error == nil,
               let hero = snapshot.window(for: style.metric) else { return nil }
-        return history.forecast(for: hero, at: snapshot.fetchedAt)
+        return UsageHistory.upcoming(history.forecast(for: hero, at: snapshot.fetchedAt), at: entry.date)
     }
 
     private var size: WidgetSize {

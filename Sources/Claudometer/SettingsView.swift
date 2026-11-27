@@ -7,6 +7,7 @@ import SwiftUI
 struct SettingsView: View {
     @AppStorage(SettingsKey.settingsTab) private var tab = SettingsTab.general
     @AppStorage(SettingsKey.language) private var language = "system"
+    @ObservedObject private var height = SettingsHeight.shared
 
     var body: some View {
         TabView(selection: $tab) {
@@ -26,6 +27,8 @@ struct SettingsView: View {
         // Rebuilt in a new language; `tr` reads it when the views are created.
         .id(language)
         .frame(width: 460)
+        // Taller tabs scroll instead of running under the Dock.
+        .environment(\.settingsMaxHeight, height.available)
         .onHostingWindow(SettingsWindow.attach)
     }
 }
@@ -64,6 +67,8 @@ enum SettingsWindow {
     }
 
     fileprivate static func attach(_ window: NSWindow?) {
+        // Every time, so a reopened window gets the cap for its screen.
+        if let window { SettingsHeight.shared.attach(window) }
         guard let window, self.window !== window else { return }
         self.window = window
         // Settings… from another desktop brings the window here instead of switching desktops.
@@ -246,7 +251,7 @@ struct GeneralSettings: View {
             }
         }
         .formStyle(.grouped)
-        .fixedSize(horizontal: false, vertical: true)
+        .settingsTabHeight()
         .onChange(of: appearance) { AppAppearance.applyCurrent() }
         .onChange(of: refreshMinutes) {
             store.restartPolling()
@@ -315,7 +320,7 @@ struct NotificationSettings: View {
             }
         }
         .formStyle(.grouped)
-        .fixedSize(horizontal: false, vertical: true)
+        .settingsTabHeight()
         // Older builds allowed a first alert up to 99%; pull it back into the slider's range.
         .onAppear { notifyLow = min(notifyLow, 95) }
         .onChange(of: notifyLow) { if notifyHigh < notifyLow { notifyHigh = notifyLow } }
@@ -360,7 +365,7 @@ struct LoginSettings: View {
             AddAccountSection()
         }
         .formStyle(.grouped)
-        .fixedSize(horizontal: false, vertical: true)
+        .settingsTabHeight()
     }
 }
 

@@ -140,12 +140,11 @@ public struct UsageWidgetContent: View {
                         // Symbol + short label, so the state reads without the ring colour.
                         // When both don't fit (Russian), the reset time stays: the symbol
                         // already carries the state.
-                        let reset = Formatters.shortReset(window?.resetsAt, now: now)
                         HStack(spacing: 3) {
                             LevelTag(level: level, showsText: false)
                             ViewThatFits(in: .horizontal) {
-                                Text(verbatim: "\(tag) · \(reset)")
-                                Text(verbatim: reset)
+                                Text(verbatim: "\(tag) · \(Formatters.shortReset(window?.resetsAt, now: now))")
+                                Text(verbatim: Formatters.shortReset(window?.resetsAt, now: now, style: .label))
                             }
                         }
                     } else {
@@ -317,10 +316,16 @@ public struct UsageWidgetContent: View {
             .font(.system(size: 11))
             MeterBar(fraction: window.utilization / 100, level: style.fillLevel(window, stale: isStale), elapsed: window.elapsedFraction(now: now), height: 5)
             if caption {
-                Text([isStale ? nil : Palette.label(for: level), Formatters.resetText(window.resetsAt, now: now)].compactMap { $0 }.joined(separator: " · "))
-                    .font(.system(size: 11))
-                    .foregroundStyle(Ink.secondary)
-                    .lineLimit(1)
+                // When both don't fit (a reset a week out, in Russian), the reset time stays: the
+                // symbol by the title already carries the state.
+                let reset = Formatters.resetText(window.resetsAt, now: now)
+                ViewThatFits(in: .horizontal) {
+                    Text([isStale ? nil : Palette.label(for: level), reset].compactMap { $0 }.joined(separator: " · "))
+                    Text(reset)
+                }
+                .font(.system(size: 11))
+                .foregroundStyle(Ink.secondary)
+                .lineLimit(1)
             }
         }
         .accessibilityElement(children: .ignore)

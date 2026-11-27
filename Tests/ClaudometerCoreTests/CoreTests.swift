@@ -977,6 +977,27 @@ private func json(_ string: String) -> Data { Data(string.utf8) }
         }
     }
 
+    /// Day+time strings in Russian: lowercase day names mid-sentence, "завтра", 24-hour clock.
+    @Test func russianDayTimes() {
+        inRussian {
+            let t = DayTimeTests()
+            let ru = Locale(identifier: "ru_RU")
+            #expect(t.reset(t.tomorrow, ru) == "Сброс завтра 15:00")
+            #expect(t.reset(t.monday, ru) == "Сброс пн 9:00")
+            #expect(t.reset(t.weekAway, ru) == "Сброс пт, 4 дек., 9:00")
+            #expect(t.forecast(t.today, ru) == "В этом темпе: лимит в\u{a0}16:40")
+            #expect(t.forecast(t.tomorrow, ru) == "В этом темпе: лимит завтра в\u{a0}15:00")
+            #expect(t.forecast(t.monday, ru) == "В этом темпе: лимит в\u{a0}пн 9:00")
+            #expect(t.short(t.tomorrow, ru) == "завтра 15:00")
+            #expect(t.short(t.tomorrow, ru, .label) == "Завтра 15:00")
+            #expect(t.short(t.monday, ru, .label) == "Пн 9:00")
+            #expect(t.short(t.tomorrow, ru, .compact) == "сб 15:00")
+            #expect(t.short(t.weekAway, ru, .compact) == "4 дек., 9:00")
+            // A 12-hour clock keeps its "PM" as `time(_:)` writes it; only the day is lowercased.
+            #expect(t.short(t.monday, Locale(identifier: "ru_US")) == "пн 9:00\u{202f}AM")
+        }
+    }
+
     @Test func englishIsTheKey() {
         #expect(Formatters.duration(2 * 3600 + 14 * 60) == "2h 14m")
         #expect(Formatters.shortReset(Date(timeIntervalSince1970: 7200), now: Date(timeIntervalSince1970: 0)) == "in 2h")
@@ -1209,5 +1230,120 @@ private func json(_ string: String) -> Data { Data(string.utf8) }
         #expect(UsageHistory.dailyBudget(for: weekly(50, resetsIn: -1), todayUse: 0, now: now, calendar: calendar) == nil)
         let noReset = LimitWindow(id: "weekly_all", group: .weekly, title: "Weekly", utilization: 10, resetsAt: nil)
         #expect(UsageHistory.dailyBudget(for: noReset, todayUse: 0, now: now, calendar: calendar) == nil)
+    }
+
+    /// On the day the week reset, today's use mixes both windows, so there's no budget.
+    @Test func noneOnTheDayTheWindowReset() {
+        // The cycle began at 10:00 today.
+        #expect(UsageHistory.dailyBudget(for: weekly(10, resetsIn: 7 - 2.0 / 24), todayUse: 30, now: now, calendar: calendar) == nil)
+        // It began at midnight: still today.
+        #expect(UsageHistory.dailyBudget(for: weekly(10, resetsIn: 6.5), todayUse: 30, now: now, calendar: calendar) == nil)
+    }
+
+    @Test func backTheDayAfterTheReset() throws {
+        // The cycle began at 21:36 yesterday: today + 6 more days until the reset.
+        let budget = try #require(UsageHistory.dailyBudget(for: weekly(10, resetsIn: 6.4), todayUse: 4, now: now, calendar: calendar))
+        #expect(abs(budget - 94.0 / 7) < 0.001)
+    }
+}
+
+/// Reset and forecast times by calendar day: today, tomorrow, this week, or a week away.
+@Suite struct DayTimeTests {
+    var calendar: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "UTC")!
+        return c
+    }
+    func at(_ iso: String) -> Date { ISO8601DateFormatter().date(from: iso)! }
+
+    /// Friday 2026-11-27, 10:00 UTC.
+    var now: Date { at("2026-11-27T10:00:00Z") }
+    var today: Date { at("2026-11-27T16:40:00Z") }
+    var tomorrow: Date { at("2026-11-28T15:00:00Z") }
+    var monday: Date { at("2026-11-30T09:00:00Z") }
+    /// Next Friday, the same weekday as today.
+    var weekAway: Date { at("2026-12-04T09:00:00Z") }
+
+    func reset(_ date: Date, _ locale: Locale) -> String { Formatters.resetText(date, now: now, calendar: calendar, locale: locale) }
+    func forecast(_ date: Date, _ locale: Locale) -> String { Formatters.forecastText(date, now: now, calendar: calendar, locale: locale) }
+    func short(_ date: Date, _ locale: Locale, _ style: Formatters.DayStyle = .inline) -> String {
+        Formatters.shortReset(date, now: now, calendar: calendar, locale: locale, style: style)
+    }
+
+    @Test func twelveHourLocale() {
+        let us = Locale(identifier: "en_US")
+        #expect(forecast(today, us) == "At this pace: limit at\u{a0}4:40\u{202f}PM")
+        #expect(forecast(tomorrow, us) == "At this pace: limit tomorrow at\u{a0}3:00\u{202f}PM")
+        #expect(forecast(monday, us) == "At this pace: limit at\u{a0}Mon 9:00\u{202f}AM")
+        #expect(reset(tomorrow, us) == "Resets tomorrow 3:00\u{202f}PM")
+        #expect(reset(monday, us) == "Resets Mon 9:00\u{202f}AM")
+        #expect(reset(weekAway, us) == "Resets Fri, Dec 4, 9:00\u{202f}AM")
+        // The time part is exactly `time(_:)`'s, so it matches "Updated …".
+        #expect(Formatters.dayTime(monday, now: now, calendar: calendar, locale: us)
+                .hasSuffix(Formatters.time(monday, calendar: calendar, locale: us)))
+    }
+
+    @Test func twentyFourHourLocale() {
+        let gb = Locale(identifier: "en_GB")
+        #expect(forecast(today, gb) == "At this pace: limit at\u{a0}16:40")
+        #expect(forecast(tomorrow, gb) == "At this pace: limit tomorrow at\u{a0}15:00")
+        #expect(reset(tomorrow, gb) == "Resets tomorrow 15:00")
+        #expect(reset(monday, gb) == "Resets Mon 9:00")
+        #expect(reset(weekAway, gb) == "Resets Fri 4 Dec, 9:00")
+        #expect(short(weekAway, gb) == "Fri 4 Dec, 9:00")
+        // A US locale set to 24-hour in System Settings follows it, as `time(_:)` does.
+        var components = Locale.Components(locale: Locale(identifier: "en_US"))
+        components.hourCycle = .zeroToTwentyThree
+        #expect(forecast(monday, Locale(components: components)) == "At this pace: limit at\u{a0}Mon 09:00")
+        #expect(forecast(today, Locale(components: components)) == "At this pace: limit at\u{a0}16:40")
+    }
+
+    /// "Tomorrow" capitalised only where it starts a label.
+    @Test func capitalisedWhenStartingALabel() {
+        let gb = Locale(identifier: "en_GB")
+        #expect(short(tomorrow, gb) == "tomorrow 15:00")
+        #expect(short(tomorrow, gb, .label) == "Tomorrow 15:00")
+        #expect(short(monday, gb, .label) == "Mon 9:00")
+        // Under 24 h it's still a countdown.
+        #expect(short(today, gb, .label) == "in 6h 40m")
+    }
+
+    /// The copy card's compact wording: the weekday for tomorrow, the date without it a week out.
+    @Test func compactForTheCopyCard() {
+        func card(_ date: Date, _ locale: Locale) -> String {
+            Formatters.cardDetail(LimitWindow(id: "weekly_all", group: .weekly, title: "Weekly", utilization: 40, resetsAt: date),
+                                  now: now, calendar: calendar, locale: locale)
+        }
+        let gb = Locale(identifier: "en_GB"), us = Locale(identifier: "en_US")
+        #expect(card(tomorrow, gb) == "40% · resets Sat 15:00")
+        #expect(card(monday, gb) == "40% · resets Mon 9:00")
+        #expect(card(weekAway, gb) == "40% · resets 4 Dec, 9:00")
+        #expect(card(weekAway, us) == "40% · resets Dec 4, 9:00\u{202f}AM")
+    }
+
+    /// Calendar days, not 24-hour steps.
+    @Test func dayBoundaries() {
+        let gb = Locale(identifier: "en_GB")
+        let late = at("2026-11-27T23:00:00Z")
+        // 24.5 h away but the next date: tomorrow.
+        #expect(Formatters.resetText(at("2026-11-28T23:30:00Z"), now: late, calendar: calendar, locale: gb) == "Resets tomorrow 23:30")
+        // 47 h away, two dates on: the weekday.
+        let early = at("2026-11-27T01:00:00Z")
+        #expect(Formatters.resetText(at("2026-11-29T00:00:00Z"), now: early, calendar: calendar, locale: gb) == "Resets Sun 0:00")
+        // Five days out keeps the weekday; six or more adds the date.
+        #expect(reset(at("2026-12-02T09:00:00Z"), gb) == "Resets Wed 9:00")
+        #expect(reset(at("2026-12-03T09:00:00Z"), gb) == "Resets Thu 3 Dec, 9:00")
+    }
+}
+
+/// A forecast is hidden once its time has passed.
+@Suite struct UpcomingForecastTests {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    @Test func hidesPastForecasts() {
+        #expect(UsageHistory.upcoming(now.addingTimeInterval(60), at: now) == now.addingTimeInterval(60))
+        #expect(UsageHistory.upcoming(now, at: now) == nil)
+        #expect(UsageHistory.upcoming(now.addingTimeInterval(-60), at: now) == nil)
+        #expect(UsageHistory.upcoming(nil, at: now) == nil)
     }
 }

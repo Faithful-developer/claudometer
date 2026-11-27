@@ -70,10 +70,11 @@ struct PopoverView: View {
         let stale = store.isStale(at: now)
         let hero = snapshot?.window(for: MenuBarMetric(rawValue: metric) ?? .session)
         let others = snapshot?.windows.filter { $0.id != hero?.id } ?? []
-        // Pace forecast from the history, measured up to the reading itself; never on old data.
+        // Pace forecast from the history, measured up to the reading itself; never on old data,
+        // nor once its time has passed.
         let forecast: (LimitWindow) -> Date? = { window in
             guard !stale, let fetched = snapshot?.fetchedAt else { return nil }
-            return store.history.forecast(for: window, at: fetched)
+            return UsageHistory.upcoming(store.history.forecast(for: window, at: fetched), at: now)
         }
         let weeklyId = snapshot?.weekly?.id ?? "weekly_all"
         let account = store.hasManyAccounts ? store.selected.title : nil
@@ -289,6 +290,8 @@ struct HeroRow: View {
                     Text(Formatters.forecastText(forecast, now: now))
                         .font(.system(size: 11))
                         .foregroundStyle(Ink.secondary)
+                        // Wraps rather than truncates: "… limit tomorrow at 9:13 PM" can take two lines.
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 StatusLabel(level: level, pace: window.pace(now: now), stale: stale).padding(.top, 2)
             }
@@ -335,8 +338,22 @@ struct LimitRow: View {
                 // The pace tick's halo matches whatever is behind the row.
                 halo: highlighted ? Palette.rowHover : Palette.canvas
             )
-            Text([Formatters.resetText(window.resetsAt, now: now), forecast.map { Formatters.forecastText($0, now: now) }]
-                .compactMap { $0 }.joined(separator: " · "))
+            Group {
+                let reset = Formatters.resetText(window.resetsAt, now: now)
+                if let forecast = forecast.map({ Formatters.forecastText($0, now: now) }) {
+                    // One line where both fit, else one under the other: the break falls between
+                    // the two phrases, never inside one.
+                    ViewThatFits(in: .horizontal) {
+                        Text(reset + " · " + forecast).lineLimit(1)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(reset)
+                            Text(forecast)
+                        }
+                    }
+                } else {
+                    Text(reset)
+                }
+            }
                 .font(.system(size: 11))
                 .foregroundStyle(highlighted ? Ink.secondary : Ink.tertiary(contrast))
                 .lineLimit(2)

@@ -71,9 +71,12 @@ public struct UsageHistory: Codable, Equatable, Sendable {
     /// Fair share of a weekly limit for today: what was left at the start of today, spread
     /// evenly over the days until the reset (today included). `todayUse` is today's bar from
     /// `dailyUse`. Nil without a reset time, once the limit is used up, or after the reset.
+    /// Also nil on the day the current cycle began: today's use then mixes the old window with
+    /// the new one, while the budget is the new window's ("Today 91% of 14%").
     public static func dailyBudget(for window: LimitWindow, todayUse: Double, now: Date, calendar: Calendar = .current) -> Double? {
         guard let resetsAt = window.resetsAt, resetsAt > now, window.utilization < 100 else { return nil }
         let startOfToday = calendar.startOfDay(for: now)
+        if let length = window.windowLength, resetsAt.addingTimeInterval(-length) >= startOfToday { return nil }
         let days = max(1, (resetsAt.timeIntervalSince(startOfToday) / 86400).rounded(.up))
         let leftThisMorning = max(0, 100 - max(window.utilization - todayUse, 0))
         return leftThisMorning / days
@@ -85,6 +88,12 @@ public struct UsageHistory: Codable, Equatable, Sendable {
     }
 
     // MARK: - Forecast
+
+    /// A forecast still worth showing at `now`: nil once its time has come. It's made at fetch
+    /// time but stays on screen until the data goes stale, so "limit at 14:06" could linger at 14:20.
+    public static func upcoming(_ forecast: Date?, at now: Date) -> Date? {
+        forecast.flatMap { $0 > now ? $0 : nil }
+    }
 
     /// When `window` reaches 100% at its recent pace, if that's before it resets; nil otherwise
     /// (idle, slowing down, not enough data, or the reset comes first).

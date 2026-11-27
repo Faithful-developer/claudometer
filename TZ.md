@@ -163,7 +163,8 @@ enum UsageState: Codable {
   - the label (for example "Session (5h)", "Weekly — all models", "Weekly — Opus")
   - a progress bar
   - % used
-  - a reset countdown, for example "Resets in 2h 14m" or "Resets Fri 09:00" when more than 24h away
+  - a reset countdown, for example "Resets in 2h 14m"; when 24h or more away, the day and time by calendar day: "Resets tomorrow 15:00", "Resets Fri 9:00", or "Resets Fri 4 Dec, 9:00" six or more days out, where the weekday alone could mean today. The time follows the locale's 12/24-hour clock, as "Updated …" does. The small widget uses the same wording without "Resets" ("Tomorrow" capitalised where it starts the label). The copy card, where a long phrase cut the limit's name, says the weekday for tomorrow and drops the weekday a week out ("resets Sat 15:00", "resets 4 Dec, 9:00"). Russian writes day names in lowercase mid-sentence ("Сброс завтра 15:00", "сброс пт, 4 дек., 9:00").
+  - when using the limit fast, a pace forecast (F-4): "At this pace: limit at 16:40" today, "… limit tomorrow at 9:00", or "… limit at Fri 9:00" (same day rules). It's hidden once its time has passed, though the reading it came from is still fresh.
 - **FR-7:** The footer shows "Updated N min ago", the plan name, and buttons for **Refresh**, **Settings…** and **Quit**.
 - **FR-8:** When the app is in an error state, the popover shows a message with an action button (see §7).
 - **FR-9:** The countdowns update every 30 s while the popover is open. This needs no network call.
@@ -179,7 +180,7 @@ enum UsageState: Codable {
 - **FR-13:** Each widget timeline covers 2 h: an entry every 5 min, every minute in the 15 min before each reset, one at the reset, and one when the data turns stale (`WidgetTimeline.entryDates`), so countdowns stay current between app updates. Data is shown as last known (greyed, "Not updated since 14:05", or the error's short reason) when the last fetch failed or the reading is older than the stale limit: 35 min, or 1.5 × the refresh interval if that is longer (`UsageState.maxAge(refreshMinutes:)`; the widget gets the interval through `WidgetStyle`). The popover, menu bar icon, copy card and widget all use this one rule (`UsageState.isStale(at:maxAge:)`); the menu bar re-checks it every minute. In the popover, old data without an error gets a neutral notice with Refresh Now.
 - **FR-14:** Clicking the widget opens the popover through the URL scheme `claudometer://open`. A click that launches the app retries for about 2 s while the status item appears; if the icon is hidden, Settings opens. Login problems open Settings › Accounts instead. A click on a limit, pace, reset or "Usage Not Updating" alert does the same for the account it names (the shared "no connection" alert opens the current one).
 - **FR-14a (0.5.0):** Edit Widget offers a **Main Limit** for each widget: Same as Menu Bar (default, so widgets placed earlier keep their look), Session, Weekly or Highest. The large widget shows the weekly limit by day where the per-surface breakdown would be, when the plan has none and there are two or more days of history.
-- **FR-9a · Daily budget (0.5.0).** The daily chart header reads "Today 12% of 18%": today's use against what was left of the weekly limit this morning, spread over the days until it resets (today included). Hidden on stale data and once the limit is used up.
+- **FR-9a · Daily budget (0.5.0).** The daily chart header reads "Today 12% of 18%": today's use against what was left of the weekly limit this morning, spread over the days until it resets (today included). Hidden on stale data, once the limit is used up, and on the day the weekly limit resets (today's use then mixes the old week with the new); the header then reads "Today 91%".
 
 ### 3.4 Polling
 - **FR-15:** The app fetches once at launch, then repeats every N minutes. N defaults to 5 and can be set from 1 to 30.
@@ -386,11 +387,11 @@ claude-widget/
 │                                      │
 │  Weekly — all models           17 %  │
 │  ███░░░░░░░░░░░░░░░░                 │
-│  Resets Fri 09:00                    │
+│  Resets Fri 9:00                     │
 │                                      │
 │  Weekly — Opus                  5 %  │
 │  █░░░░░░░░░░░░░░░░░░                 │
-│  Resets Fri 09:00                    │
+│  Resets Fri 9:00                     │
 ├──────────────────────────────────────┤
 │  Updated 1 min ago                   │
 │  [↻ Refresh]   [Settings…]   [Quit]  │
