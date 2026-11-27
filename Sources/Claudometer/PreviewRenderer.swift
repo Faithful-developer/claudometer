@@ -13,7 +13,7 @@ enum PreviewRenderer {
         let dir = URL(fileURLWithPath: args.count > index + 1 ? args[index + 1] : "previews", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
-        // `--sample high|rings|pinned|ultra|stale|expired|signedout|accounts|loading|update|old`
+        // `--sample high|extra|rings|pinned|ultra|stale|expired|signedout|accounts|loading|update|old`
         // renders made-up states for design review.
         let sample = args.firstIndex(of: "--sample").flatMap { args.count > $0 + 1 ? args[$0 + 1] : nil }
         // `--language ru` renders in that language, from the repo's strings.
@@ -25,6 +25,7 @@ enum PreviewRenderer {
         let initial: UsageState?
         switch sample {
         case "high": initial = highSample
+        case "extra": initial = extraSample
         case "rings": initial = ringsSample
         case "ultra": initial = ultraSample
         case "pinned":
@@ -145,6 +146,14 @@ enum PreviewRenderer {
                 if let image = snapshot(page, width: 460, appearance: appearance) {
                     write(image, scale: pixelScale, to: dir.appendingPathComponent("settings-\(tab)-\(name)\(suffix(sample, language)).png"))
                 }
+            }
+
+            // The first-launch welcome, on the system window colour its window draws.
+            let welcome = WelcomeView {}
+                .environment(\.isOnGlass, Glass.isAvailable)
+                .background(Color(nsColor: .windowBackgroundColor))
+            if let image = snapshot(welcome, width: WelcomeView.width, appearance: appearance) {
+                write(image, scale: pixelScale, to: dir.appendingPathComponent("welcome-\(name)\(suffix(sample, language)).png"))
             }
 
             let settings = AppSettings.current
@@ -276,6 +285,15 @@ enum PreviewRenderer {
             ],
             plan: "pro",
             fetchedAt: now.addingTimeInterval(-120)
+        ))
+    }
+
+    /// The `high` figures with $12.40 of $50.00 of extra usage (FR-36).
+    private static var extraSample: UsageState {
+        guard let high = highSample.snapshot else { return UsageState() }
+        return UsageState(snapshot: UsageSnapshot(
+            windows: high.windows, breakdown: high.breakdown, plan: high.plan, fetchedAt: high.fetchedAt,
+            extraUsage: ExtraUsage(used: 12.4, limit: 50, currency: "USD", decimals: 2, percent: nil)
         ))
     }
 

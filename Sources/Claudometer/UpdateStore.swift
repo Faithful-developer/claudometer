@@ -52,18 +52,22 @@ final class UpdateStore {
             // whole update path from a build with a lower version.
             let installNow = CommandLine.arguments.contains("--install-update")
             while !Task.isCancelled {
-                await self?.check(manual: false)
+                let checked = await self?.check(manual: false) ?? true
                 if installNow, self?.installState == .idle { self?.installUpdate() }
-                try? await Task.sleep(for: .seconds(24 * 3600))
+                // A failed check (e.g. at login before the network is up) retries within the hour.
+                try? await Task.sleep(for: .seconds(checked ? 24 * 3600 : 3600))
             }
         }
     }
 
-    func check(manual: Bool) async {
+    /// Returns false when the check failed, so the daily loop can retry sooner. Without a
+    /// bundle version there's nothing to retry, so that counts as done.
+    @discardableResult
+    func check(manual: Bool) async -> Bool {
         // `swift run` has no bundle version; don't offer every release as an update.
         guard Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") != nil else {
             if manual { lastResult = tr("Update checks need the bundled app.") }
-            return
+            return true
         }
         isChecking = true
         defer { isChecking = false }
@@ -72,10 +76,12 @@ final class UpdateStore {
             UpdateInstaller.log.info("Checked for updates: \(self.available?.version ?? "up to date", privacy: .public)")
             if let available { announce(available, notify: !manual) }
             if manual { lastResult = available.map { tr("Version %@ is available.", $0.version) } ?? tr("You’re up to date.") }
+            return true
         } catch {
-            UpdateInstaller.log.error("Update check failed: \(error.localizedDescription, privacy: .public)")
+            UpdateInstaller.log.error("Update check failed: \(String(describing: error), privacy: .public)")
             // Background checks fail quietly (offline etc.); only a manual check reports it.
             if manual { lastResult = tr("Couldn’t check for updates.") }
+            return false
         }
     }
 

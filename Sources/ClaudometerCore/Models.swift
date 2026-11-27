@@ -150,6 +150,36 @@ public enum UsageSource: String, Codable, Sendable {
     }
 }
 
+/// Paid usage past the plan limits ("extra usage", TZ FR-36), when the account has it on.
+/// Amounts are in major units (dollars), already divided by the response's exponent.
+public struct ExtraUsage: Codable, Hashable, Sendable {
+    public let used: Double
+    /// The monthly spending limit, if one is set.
+    public let limit: Double?
+    /// ISO 4217 code, e.g. "USD".
+    public let currency: String
+    /// Fraction digits to show (2 for dollars).
+    public let decimals: Int
+    /// Percent of the limit as the server reports it, if it does.
+    public let percent: Double?
+
+    public init(used: Double, limit: Double?, currency: String, decimals: Int, percent: Double?) {
+        self.used = used
+        self.limit = limit
+        self.currency = currency
+        self.decimals = decimals
+        self.percent = percent
+    }
+
+    /// Percent of the limit for the meter: the server's figure, else worked out from the
+    /// amounts. Nil without a limit, where the server still sends `percent: 0` and a meter
+    /// would claim a cap that doesn't exist.
+    public var meterPercent: Double? {
+        guard let limit, limit > 0 else { return nil }
+        return percent ?? used / limit * 100
+    }
+}
+
 public struct UsageSnapshot: Codable, Hashable, Sendable {
     public let windows: [LimitWindow]
     public let breakdown: [BreakdownRow]
@@ -157,13 +187,17 @@ public struct UsageSnapshot: Codable, Hashable, Sendable {
     public let fetchedAt: Date
     /// Missing in states cached before the claude.ai fallback existed.
     public let source: UsageSource?
+    /// Nil when it's off or unreadable, and in states saved by 0.5.0 (the widget reads those).
+    public let extraUsage: ExtraUsage?
 
-    public init(windows: [LimitWindow], breakdown: [BreakdownRow] = [], plan: String? = nil, fetchedAt: Date = Date(), source: UsageSource? = nil) {
+    public init(windows: [LimitWindow], breakdown: [BreakdownRow] = [], plan: String? = nil, fetchedAt: Date = Date(),
+                source: UsageSource? = nil, extraUsage: ExtraUsage? = nil) {
         self.windows = windows
         self.breakdown = breakdown
         self.plan = plan
         self.fetchedAt = fetchedAt
         self.source = source
+        self.extraUsage = extraUsage
     }
 
     public var session: LimitWindow? { windows.first { $0.group == .session } }
@@ -202,11 +236,11 @@ public struct UsageSnapshot: Codable, Hashable, Sendable {
     }
 
     public func withPlan(_ plan: String?) -> UsageSnapshot {
-        UsageSnapshot(windows: windows, breakdown: breakdown, plan: plan, fetchedAt: fetchedAt, source: source)
+        UsageSnapshot(windows: windows, breakdown: breakdown, plan: plan, fetchedAt: fetchedAt, source: source, extraUsage: extraUsage)
     }
 
     public func withSource(_ source: UsageSource) -> UsageSnapshot {
-        UsageSnapshot(windows: windows, breakdown: breakdown, plan: plan, fetchedAt: fetchedAt, source: source)
+        UsageSnapshot(windows: windows, breakdown: breakdown, plan: plan, fetchedAt: fetchedAt, source: source, extraUsage: extraUsage)
     }
 
     /// Windows whose reset time has passed read 0%: the old figure no longer applies, and
@@ -219,7 +253,7 @@ public struct UsageSnapshot: Codable, Hashable, Sendable {
             return LimitWindow(id: window.id, group: window.group, title: window.rawTitle, utilization: 0,
                                resetsAt: window.nextReset(after: resetsAt, now: now))
         }
-        return UsageSnapshot(windows: updated, breakdown: breakdown, plan: plan, fetchedAt: fetchedAt, source: source)
+        return UsageSnapshot(windows: updated, breakdown: breakdown, plan: plan, fetchedAt: fetchedAt, source: source, extraUsage: extraUsage)
     }
 }
 
@@ -251,6 +285,23 @@ public enum MenuBarPins {
 
     public static func encode(_ ids: [String]) -> String {
         ids.joined(separator: ",")
+    }
+
+    /// Stored ids beyond this are pruned, oldest unlisted first (see `toggling`).
+    static let maxStored = 8
+
+    /// `pinned` after the Settings toggle for `id`. The setting is shared by every account, so
+    /// ids this account doesn't list (another account's limits, or one missing from this
+    /// reading) are kept; only `main`, the account's own main ring, is dropped since it can't be
+    /// pinned. The two-pin cap counts the ids this account lists.
+    public static func toggling(_ id: String, on: Bool, in pinned: [String], listed: [String], main: String?) -> [String] {
+        let listed = Set(listed)
+        var ids = pinned.filter { $0 != id && $0 != main }
+        if on, ids.filter(listed.contains).count < maxPinned { ids.append(id) }
+        while ids.count > maxStored, let oldest = ids.firstIndex(where: { !listed.contains($0) }) {
+            ids.remove(at: oldest)
+        }
+        return ids
     }
 }
 
@@ -367,6 +418,24 @@ public enum ErrorRecovery: Hashable, Sendable {
         case .tryAgain: return tr("Try Again")
         case .addSessionKey: return tr("Add Session Key…")
         case .updateSessionKey: return tr("Update Session Key…")
+        }
+    }
+}
+
+/// Where a click on the widget or on an alert takes the user (TZ FR-14): the menu, unless the
+/// problem needs them in Settings, where it's fixed.
+public enum ClickDestination: Hashable, Sendable {
+    /// Settings › Accounts: signed out, login or session key expired, Keychain denied.
+    case login
+    /// Settings › About, for the update check: the usage format changed.
+    case about
+    case menu
+
+    public init(error: AppError?) {
+        switch error {
+        case .notSignedIn?, .tokenExpired?, .sessionKeyInvalid?, .keychainDenied?: self = .login
+        case .apiChanged?: self = .about
+        default: self = .menu
         }
     }
 }

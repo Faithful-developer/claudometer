@@ -56,8 +56,8 @@ final class StubURLProtocol: URLProtocol {
     }
 }
 
-private func usageJSON() throws -> Data {
-    let url = try #require(Bundle.module.url(forResource: "sample-usage", withExtension: "json", subdirectory: "Fixtures"))
+private func usageJSON(_ name: String = "sample-usage") throws -> Data {
+    let url = try #require(Bundle.module.url(forResource: name, withExtension: "json", subdirectory: "Fixtures"))
     return try Data(contentsOf: url)
 }
 
@@ -96,6 +96,23 @@ private func service(
 // MARK: - Tests
 
 @Suite(.serialized) struct NetworkTests {
+    // MARK: Update check
+
+    /// 200 is read, 404 means nothing published yet, anything else is a failed check rather
+    /// than "up to date".
+    @Test func updateCheckStatus() async throws {
+        let release = Data(#"{"tag_name":"v9.0.0","html_url":"https://github.com/x/y/releases/tag/v9.0.0"}"#.utf8)
+        let checker = UpdateChecker(session: StubURLProtocol.session)
+        StubURLProtocol.install { _ in .http(200, body: release) }
+        #expect(try await checker.check(currentVersion: "0.5.0")?.version == "9.0.0")
+        StubURLProtocol.install { _ in .http(404) }
+        #expect(try await checker.check(currentVersion: "0.5.0") == nil)
+        for status in [403, 500, 503] {
+            StubURLProtocol.install { _ in .http(status) }
+            await #expect(throws: UpdateChecker.Failure(status: status)) { try await checker.check(currentVersion: "0.5.0") }
+        }
+    }
+
     // MARK: HTTP status mapping
 
     @Test(arguments: [
@@ -211,6 +228,25 @@ private func service(
         await #expect(throws: AppError.rateLimited(retryAfter: 600)) {
             try await service(backupKey: nil).fetch(account: .primary)
         }
+    }
+
+    /// Both routes rebuild the snapshot (`withPlan`, `withSource`); extra usage reaches the
+    /// result through either. The enabled shape is synthetic (`sample-usage-extra`).
+    @Test func extraUsageSurvivesBothRoutes() async throws {
+        let usage = try usageJSON("sample-usage-extra")
+        StubURLProtocol.install { request in
+            if isClaudeCode(request) { return .http(200, body: usage) }
+            return request.url!.path.hasSuffix("/usage") ? .http(200, body: usage) : .http(200, body: orgsJSON)
+        }
+        let viaClaudeCode = try await service().fetch(account: .primary)
+        #expect(viaClaudeCode.source == .claudeCode)
+        #expect(viaClaudeCode.extraUsage?.used == 12.4)
+        #expect(viaClaudeCode.extraUsage?.limit == 50)
+
+        let viaClaudeWeb = try await service(credentials: nil).fetch(account: .primary)
+        #expect(viaClaudeWeb.source == .claudeWeb)
+        #expect(viaClaudeWeb.extraUsage?.used == 12.4)
+        #expect(viaClaudeWeb.extraUsage?.percent == 24.8)
     }
 
     @Test func expiredLoginUsesClaudeWeb() async throws {

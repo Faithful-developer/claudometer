@@ -17,9 +17,12 @@ struct ClaudometerApp: App {
         // Agent app: no Dock icon even when launched without an Info.plist (`swift run`).
         NSApplication.shared.setActivationPolicy(.accessory)
         AppAppearance.applyCurrent()
-        LoginItem.enableOnFirstLaunch()
+        // Decided before Open at Login is turned on, which marks the install as not new.
+        let welcome = WelcomeWindow.isNeeded()
+        if !welcome { LoginItem.enableOnFirstLaunch() }
         store = UsageStore()
-        store.start()
+        // A fresh install reads the Keychain only after the welcome explains any prompt.
+        if welcome { WelcomeWindow.wait(for: store) } else { store.start() }
         updates.start()
         CheckInService.start()
         AppDelegate.store = store
@@ -66,7 +69,8 @@ struct MenuBarLabel: View {
     @AppStorage(SettingsKey.criticalThreshold) private var critical = 85.0
 
     var body: some View {
-        let snapshot = store.state.snapshot
+        // Projected like the popover, so a reset that passed during failed fetches shows as one.
+        let snapshot = store.state.projected(at: clock.now).snapshot
         let rings = snapshot?.menuBarWindows(metric: MenuBarMetric(rawValue: metric) ?? .session,
                                              pinned: MenuBarPins.decode(pinned),
                                              extraThreshold: extraRings ? extraThreshold : nil)
@@ -104,7 +108,7 @@ final class MinuteClock: ObservableObject {
 }
 
 /// Handles `claudometer://` links, e.g. a click on the desktop widget (FR-14), and clicks on
-/// the update notification.
+/// notifications.
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     @MainActor static var store: UsageStore?
     @MainActor static var updates: UpdateStore?
@@ -114,6 +118,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             if NotificationManager.isAvailable { UNUserNotificationCenter.current().delegate = self }
             NotificationManager.registerCategories()
         }
+        DispatchQueue.main.async { WelcomeWindow.show() }
     }
 
     /// Opening the app again from Finder, Spotlight or Launchpad. There's no Dock icon or window,
@@ -121,9 +126,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     /// bar icon is hidden (notch, menu bar managers). Opens the menu, or Settings without one.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         MainActor.assumeIsolated {
-            if !MenuBarMenu.open() { SettingsWindow.open(tab: .general) }
+            if !WelcomeWindow.reopen(), !MenuBarMenu.open() { SettingsWindow.open(tab: .general) }
         }
         return false
+    }
+
+    /// Runs before AppKit closes the windows, so the welcome can tell a quit from a Continue.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        MainActor.assumeIsolated { WelcomeWindow.willTerminate() }
+        return .terminateNow
     }
 
     /// Without a delegate, alerts are hidden while the app is active (e.g. Settings is open).
@@ -133,7 +144,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         let content = response.notification.request.content
-        guard response.notification.request.identifier == NotificationManager.updateIdentifier else { return }
+        guard response.notification.request.identifier == NotificationManager.updateIdentifier else {
+            // A limit or outage alert: a plain click opens its account, like a widget click.
+            // Dismissing does nothing. Alerts from 0.5.0 name no account: the current one opens.
+            guard response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
+            await Self.show(account: content.userInfo[NotificationManager.accountKey] as? String)
+            return
+        }
         let url = (content.userInfo["url"] as? String).flatMap(URL.init(string:)) ?? UpdateChecker.releasesPage
         let install = response.actionIdentifier == NotificationManager.installAction
         await MainActor.run {
@@ -145,22 +162,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
     }
 
-    /// A widget click selects its account (`claudometer://open?account=<id>`), refreshes, and
-    /// opens the menu (TZ FR-14). When the problem needs the user (login expired, signed out, …)
-    /// it opens Settings instead, where it's fixed.
+    /// A widget click (`claudometer://open?account=<id>`, TZ FR-14).
     func application(_ application: NSApplication, open urls: [URL]) {
         guard let url = urls.first(where: { $0.scheme == "claudometer" }) else { return }
         let account = URLComponents(url: url, resolvingAgainstBaseURL: false)?
             .queryItems?.first { $0.name == "account" }?.value
-        Task { @MainActor in
-            guard let store = Self.store else { return }
-            if let account { store.select(account) }
-            store.refresh()
-            switch store.state.error {
-            case .notSignedIn?, .tokenExpired?, .sessionKeyInvalid?, .keychainDenied?: SettingsWindow.open(tab: .login)
-            case .apiChanged?: SettingsWindow.open(tab: .about)
-            default: await Self.openMenu()
-            }
+        Task { @MainActor in await Self.show(account: account) }
+    }
+
+    /// A widget or alert click: selects `account` (an unknown one keeps the current selection),
+    /// refreshes, and opens the menu. When the problem needs the user (login expired, signed
+    /// out, …) it opens Settings instead, where it's fixed. While the welcome waits, polling
+    /// hasn't started and a refresh does nothing, so it brings the welcome forward instead.
+    @MainActor
+    static func show(account: String?) async {
+        guard let store, !WelcomeWindow.reopen() else { return }
+        if let account { store.select(account) }
+        store.refresh()
+        switch ClickDestination(error: store.state.error) {
+        case .login: SettingsWindow.open(tab: .login)
+        case .about: SettingsWindow.open(tab: .about)
+        case .menu: await openMenu()
         }
     }
 

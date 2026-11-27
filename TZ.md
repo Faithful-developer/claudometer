@@ -167,6 +167,7 @@ enum UsageState: Codable {
 - **FR-7:** The footer shows "Updated N min ago", the plan name, and buttons for **Refresh**, **Settings…** and **Quit**.
 - **FR-8:** When the app is in an error state, the popover shows a message with an action button (see §7).
 - **FR-9:** The countdowns update every 30 s while the popover is open. This needs no network call.
+- **FR-36 · Extra usage.** When the account has paid extra usage switched on, the popover shows one "Extra usage" row after the limits (its own block behind a divider, before the daily chart): the amount spent, "$12.40 of $50.00" when a monthly spending limit is set, with a meter coloured by the usual thresholds (no pace tick), or the amount alone without a limit. Read from the response's `spend` block (`used.amount_minor` / 10^`exponent`, `limit`, `percent`), else the older `extra_usage` (`used_credits`, `monthly_limit`, `decimal_places`). It isn't a limit: not in the menu bar, widgets, copy card, alerts or history, and the row doesn't copy. **Caveat:** every response seen so far has it off with null amounts, so the enabled shape (notably `limit`) is inferred; anything unexpected hides the row and never affects the limits.
 
 ### 3.3 Desktop / Notification Center widget (WidgetKit)
 - **FR-10:** Three widget families are supported:
@@ -176,7 +177,7 @@ enum UsageState: Codable {
 - **FR-11:** The widget reads the latest `UsageState` from the shared folder `~/Library/Application Support/Claudometer/` (NFR-7). **The widget makes no network calls.**
 - **FR-12:** The app calls `WidgetCenter.shared.reloadAllTimelines()` after each successful fetch.
 - **FR-13:** Each widget timeline covers 2 h: an entry every 5 min, every minute in the 15 min before each reset, one at the reset, and one when the data turns stale (`WidgetTimeline.entryDates`), so countdowns stay current between app updates. Data is shown as last known (greyed, "Not updated since 14:05", or the error's short reason) when the last fetch failed or the reading is older than the stale limit: 35 min, or 1.5 × the refresh interval if that is longer (`UsageState.maxAge(refreshMinutes:)`; the widget gets the interval through `WidgetStyle`). The popover, menu bar icon, copy card and widget all use this one rule (`UsageState.isStale(at:maxAge:)`); the menu bar re-checks it every minute. In the popover, old data without an error gets a neutral notice with Refresh Now.
-- **FR-14:** Clicking the widget opens the popover through the URL scheme `claudometer://open`. A click that launches the app retries for about 2 s while the status item appears; if the icon is hidden, Settings opens. Login problems open Settings › Accounts instead.
+- **FR-14:** Clicking the widget opens the popover through the URL scheme `claudometer://open`. A click that launches the app retries for about 2 s while the status item appears; if the icon is hidden, Settings opens. Login problems open Settings › Accounts instead. A click on a limit, pace, reset or "Usage Not Updating" alert does the same for the account it names (the shared "no connection" alert opens the current one).
 - **FR-14a (0.5.0):** Edit Widget offers a **Main Limit** for each widget: Same as Menu Bar (default, so widgets placed earlier keep their look), Session, Weekly or Highest. The large widget shows the weekly limit by day where the per-surface breakdown would be, when the plan has none and there are two or more days of history.
 - **FR-9a · Daily budget (0.5.0).** The daily chart header reads "Today 12% of 18%": today's use against what was left of the weekly limit this morning, spread over the days until it resets (today included). Hidden on stale data and once the limit is used up.
 
@@ -212,8 +213,10 @@ enum UsageState: Codable {
 ### 3.7 Onboarding / states
 - **FR-24:** On first launch, a short onboarding sheet explains:
   1. Claudometer reads your Claude Code login.
-  2. macOS will ask for Keychain access. Choose "Always Allow".
+  2. macOS may ask for Keychain access. If it does, choose "Always Allow".
   3. If you are not logged in, run `claude` in Terminal, then `/login`.
+
+  **Implemented (after 0.5.0):** a small welcome window with these three points, a line that a claude.ai session key can be added in Settings › Accounts, one that Open at Login is on (and where to turn it off), and **Continue**. Shown once, on a fresh install only: the bundled app, with no `welcomeShown`, no `loginItemOffered` and no saved `usage-state.json`, so upgraders never see it. Usage polling, and with it the first Keychain read and any prompt it brings (R-2), waits until the window closes (Continue or the close button); Open at Login is turned on then too, so quitting at the welcome shows it again next launch. `--show-welcome` forces it for testing.
 - **FR-25:** Each error state from §7 has its own message and recovery action.
 - **FR-26:** In the popover, hovering a limit (the hero ring or a weekly row) highlights it with the tooltip "Click to copy as an image". Clicking any limit copies one card with all limits to the clipboard as PNG/TIFF, in the current appearance, and shows "Copied" briefly. The card holds the app name, "Plan Usage Limits · <plan>", one row per limit ("x% · resets …" plus meter) and the date and time it was made. Nothing else in the popover copies, and the desktop widget does not do this.
 
@@ -501,7 +504,7 @@ A response with weekly windows but no session window is **not** E-7. It is the n
 
 ## 10. Open questions & future work
 
-- **Q-1:** Do the exact response fields (`seven_day_sonnet`, extra-usage or "overage" fields) differ between Pro and Max? This is answered in M1.
+- **Q-1:** Do the exact response fields (`seven_day_sonnet`, extra-usage or "overage" fields) differ between Pro and Max? This is answered in M1. The extra-usage fields (`spend`, `extra_usage`) are now read (FR-36); their enabled shape is still unconfirmed, since every sample so far has them off.
 - **Q-2:** Should the app ask Claude Code to refresh an expired token? **Answered:** no. Tested on 2026-10-11: `claude auth status` doesn't renew an expired token, and `claude -p` would spend usage. The claude.ai session key (§2.3) covers this case.
 - **Q-3:** What exact strings do an Ultra account's Claude Code credentials (`subscriptionType`, `rateLimitTier`) and claude.ai organization capabilities carry? Assumed `"ultra"` and `claude_ultra`, to be confirmed on a real Ultra account. Until then an unknown string is shown capitalised as-is, which is the current behaviour.
 - **F-1:** ~~The claude.ai cookie fallback (§2.3) for users who don't use Claude Code.~~ Done: the session key in Settings › Accounts.

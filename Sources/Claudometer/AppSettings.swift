@@ -38,6 +38,8 @@ enum SettingsKey {
     static let settingsTab = "settingsTab"
     /// Set once Open at Login has been turned on by default, so a later "off" sticks.
     static let loginItemOffered = "loginItemOffered"
+    /// The first-launch welcome (TZ FR-24) was seen, or isn't needed on this install.
+    static let welcomeShown = "welcomeShown"
     /// `ThresholdTracker` as JSON; added accounts append `.<account id>`.
     static let notificationCycles = "notificationCycles"
     /// `OutageTracker` as JSON; added accounts append `.<account id>`.
@@ -131,14 +133,20 @@ struct AppSettings {
         ))
     }
 
-    /// Switches the UI language right away; the widget follows on its next reload.
-    static func setLanguage(_ preference: String) {
-        L10n.resolve(preference)
-        UserDefaults.standard.set(preference, forKey: SettingsKey.language)
+    /// `saveWidgetStyle`, then redraws the widgets now: a setting changed in Settings would
+    /// otherwise only show there after the next fetch, up to 30 min later.
+    static func saveWidgetStyleAndReload() {
         saveWidgetStyle()
         #if WIDGET_SUPPORT
         WidgetCenter.shared.reloadAllTimelines()
         #endif
+    }
+
+    /// Switches the UI language right away, the widget included.
+    static func setLanguage(_ preference: String) {
+        L10n.resolve(preference)
+        UserDefaults.standard.set(preference, forKey: SettingsKey.language)
+        saveWidgetStyleAndReload()
     }
 
     /// The menu bar's rings for `snapshot` (FR-3, FR-27, FR-28).

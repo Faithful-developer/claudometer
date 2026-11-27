@@ -19,7 +19,64 @@ public enum UsageDecoder {
         return UsageSnapshot(
             windows: sorted(windows),
             breakdown: decodeBreakdown(root["seven_day_breakdown"]),
-            fetchedAt: fetchedAt
+            fetchedAt: fetchedAt,
+            extraUsage: decodeExtraUsage(root)
+        )
+    }
+
+    // MARK: - Extra usage
+
+    /// Paid usage past the plan limits, from `spend` or else the older `extra_usage`. Every
+    /// sample seen so far has it switched off with null amounts, so the enabled shape is
+    /// inferred: anything unexpected gives nil and never affects the limits.
+    static func decodeExtraUsage(_ root: [String: Any]) -> ExtraUsage? {
+        let spend = root["spend"] as? [String: Any]
+        if let value = spend.flatMap(decodeSpend) { return value }
+        // `spend` saying it's off is final; the older block only stands in when `spend` is
+        // missing or unreadable.
+        if spend?["enabled"] as? Bool == false { return nil }
+        return (root["extra_usage"] as? [String: Any]).flatMap(decodeLegacyExtraUsage)
+    }
+
+    /// `spend`: `used: {amount_minor, currency, exponent}`, `limit` (null, the same kind of
+    /// object, or a bare number taken as minor units), `percent`, `enabled`.
+    static func decodeSpend(_ spend: [String: Any]) -> ExtraUsage? {
+        guard spend["enabled"] as? Bool == true,
+              let used = spend["used"] as? [String: Any],
+              let minor = finite(used["amount_minor"]), minor >= 0 else { return nil }
+        let exponent = digits(used["exponent"])
+        let currency = (used["currency"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "USD"
+        let limit: Double?
+        switch spend["limit"] {
+        case let object as [String: Any]:
+            limit = finite(object["amount_minor"]).map { $0 / pow(10, Double(digits(object["exponent"], default: exponent))) }
+        case let number as NSNumber:
+            limit = finite(number).map { $0 / pow(10, Double(exponent)) }
+        default:
+            limit = nil
+        }
+        return ExtraUsage(
+            used: minor / pow(10, Double(exponent)),
+            limit: limit.flatMap { $0 > 0 ? $0 : nil },
+            currency: currency,
+            decimals: exponent,
+            percent: finite(spend["percent"])
+        )
+    }
+
+    /// `extra_usage`: `used_credits` and `monthly_limit` in minor units of `decimal_places`.
+    static func decodeLegacyExtraUsage(_ extra: [String: Any]) -> ExtraUsage? {
+        guard extra["is_enabled"] as? Bool == true,
+              let credits = finite(extra["used_credits"]), credits >= 0 else { return nil }
+        let decimals = digits(extra["decimal_places"])
+        let scale = pow(10, Double(decimals))
+        let currency = (extra["currency"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "USD"
+        return ExtraUsage(
+            used: credits / scale,
+            limit: finite(extra["monthly_limit"]).flatMap { $0 > 0 ? $0 / scale : nil },
+            currency: currency,
+            decimals: decimals,
+            percent: finite(extra["utilization"])
         )
     }
 
@@ -115,6 +172,17 @@ public enum UsageDecoder {
         case let s as String: return Double(s)
         default: return nil
         }
+    }
+
+    /// `number`, but only a finite value: strings like "inf" or "nan" parse as Doubles.
+    static func finite(_ value: Any?) -> Double? {
+        number(value).flatMap { $0.isFinite ? $0 : nil }
+    }
+
+    /// Fraction digits of an amount, 0...4 (2 when missing or unreadable).
+    static func digits(_ value: Any?, default fallback: Int = 2) -> Int {
+        guard let value = finite(value) else { return fallback }
+        return Int(min(max(value, 0), 4).rounded())
     }
 
     static func date(_ value: Any?) -> Date? {

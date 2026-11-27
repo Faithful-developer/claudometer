@@ -28,7 +28,9 @@ struct UsageProvider: AppIntentTimelineProvider {
         let (account, name, removed) = Self.resolve(configuration)
         let state = SnapshotStore.default(account: account).load()
             ?? UsageState(snapshot: context.isPreview ? .placeholder : nil, error: nil)
-        return UsageEntry(date: Date(), state: state, account: account, accountName: name, accountRemoved: removed,
+        let now = Date()
+        // Projected like the timeline's entries, so the gallery doesn't show a limit that has reset.
+        return UsageEntry(date: now, state: state.projected(at: now), account: account, accountName: name, accountRemoved: removed,
                           metric: configuration.metric.menuBarMetric)
     }
 
@@ -130,14 +132,17 @@ enum WidgetMetric: String, AppEnum {
 }
 
 extension UsageSnapshot {
-    static let placeholder = UsageSnapshot(
-        windows: [
-            LimitWindow(id: "session", group: .session, title: "Session (5h)", utilization: 42, resetsAt: Date().addingTimeInterval(8040)),
-            LimitWindow(id: "weekly_all", group: .weekly, title: "Weekly · all models", utilization: 17, resetsAt: Date().addingTimeInterval(3 * 86400)),
-            LimitWindow(id: "weekly_scoped:Opus", group: .weekly, title: "Weekly · Opus", utilization: 5, resetsAt: Date().addingTimeInterval(3 * 86400)),
-        ],
-        plan: "max"
-    )
+    /// Computed, so its reset times count from when it's drawn, not from the process start.
+    static var placeholder: UsageSnapshot {
+        UsageSnapshot(
+            windows: [
+                LimitWindow(id: "session", group: .session, title: "Session (5h)", utilization: 42, resetsAt: Date().addingTimeInterval(8040)),
+                LimitWindow(id: "weekly_all", group: .weekly, title: "Weekly · all models", utilization: 17, resetsAt: Date().addingTimeInterval(3 * 86400)),
+                LimitWindow(id: "weekly_scoped:Opus", group: .weekly, title: "Weekly · Opus", utilization: 5, resetsAt: Date().addingTimeInterval(3 * 86400)),
+            ],
+            plan: "max"
+        )
+    }
 }
 
 // MARK: - Refresh button
@@ -189,33 +194,34 @@ struct WidgetView: View {
     }
 
     private func content(_ style: WidgetStyle) -> some View {
-        UsageWidgetContent(
-            size: size, state: entry.state, now: entry.date, style: style, forecast: forecast(style),
+        // Decoded once per redraw for both the forecast and the daily bars (large widget only).
+        let history = family == .systemLarge ? HistoryStore.default(account: entry.account).load() : nil
+        return UsageWidgetContent(
+            size: size, state: entry.state, now: entry.date, style: style, forecast: forecast(style, history: history),
             refreshControl: AnyView(
                 Button(intent: RefreshUsageIntent()) { RefreshGlyph() }
                     .buttonStyle(.plain)
             ),
             account: entry.accountName,
-            days: days
+            days: days(history: history)
         )
     }
 
     /// Large widget only: weekly use per day, once there's more than a day of history. Shown
     /// when the plan has no per-surface breakdown.
-    private var days: [UsageHistory.Day]? {
-        guard family == .systemLarge, entry.state.snapshot?.breakdown.contains(where: { $0.percent > 0 }) != true else { return nil }
+    private func days(history: UsageHistory?) -> [UsageHistory.Day]? {
+        guard let history, entry.state.snapshot?.breakdown.contains(where: { $0.percent > 0 }) != true else { return nil }
         let weeklyId = entry.state.snapshot?.weekly?.id ?? "weekly_all"
-        let history = HistoryStore.default(account: entry.account).load()
         guard history.daysWithData(windowId: weeklyId) >= 2 else { return nil }
         return history.dailyUse(windowId: weeklyId, now: entry.date)
     }
 
     /// Large widget only: when the main limit runs out at its recent pace, from the history the
     /// app writes next to the usage state.
-    private func forecast(_ style: WidgetStyle) -> Date? {
-        guard family == .systemLarge, let snapshot = entry.state.snapshot, entry.state.error == nil,
+    private func forecast(_ style: WidgetStyle, history: UsageHistory?) -> Date? {
+        guard let history, let snapshot = entry.state.snapshot, entry.state.error == nil,
               let hero = snapshot.window(for: style.metric) else { return nil }
-        return HistoryStore.default(account: entry.account).load().forecast(for: hero, at: snapshot.fetchedAt)
+        return history.forecast(for: hero, at: snapshot.fetchedAt)
     }
 
     private var size: WidgetSize {

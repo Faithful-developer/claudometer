@@ -178,7 +178,7 @@ public struct PercentText: View {
                 .font(.system(size: size * 0.55, weight: weight, design: .rounded))
                 .foregroundStyle(Ink.secondary)
         } else {
-            Text("—").font(.system(size: size, weight: weight, design: .rounded)).foregroundStyle(Ink.tertiary(contrast))
+            Text(verbatim: "—").font(.system(size: size, weight: weight, design: .rounded)).foregroundStyle(Ink.tertiary(contrast))
         }
     }
 }
@@ -227,8 +227,8 @@ public struct StatusLabel: View {
         case .warning: return ("exclamationmark.triangle.fill", tr("Getting close"), Palette.warningGlyph, Palette.warningSoft)
         case .ok:
             switch pace {
-            case .ahead: return ("speedometer", tr("Ahead of pace"), Palette.info, Palette.infoSoft)
-            case .under, .on: return ("checkmark.circle.fill", tr("On track"), Palette.teal, Palette.tealSoft)
+            case .ahead?: return ("speedometer", Formatters.paceLabel(.ahead), Palette.info, Palette.infoSoft)
+            case .under?, .on?: return ("checkmark.circle.fill", Formatters.paceLabel(.on), Palette.teal, Palette.tealSoft)
             case nil: return nil
             }
         case .unknown: return nil

@@ -71,24 +71,37 @@ enum SettingsWindow {
         NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification, object: window, queue: .main
         ) { _ in
-            MainActor.assumeIsolated { _ = NSApp.setActivationPolicy(.accessory) }
+            MainActor.assumeIsolated { if !WelcomeWindow.isOpen { deactivate() } }
         }
         bringForward()
     }
 
+    /// Settings is on screen. Asked by the welcome window before it drops the Dock icon.
+    static var isOpen: Bool { window?.isVisible == true }
+
     private static func bringForward() {
         guard let window else { return }
+        bringForward(window)
+    }
+
+    /// Brings one of the app's own windows (Settings, the welcome) in front of other apps.
+    static func bringForward(_ window: NSWindow) {
         activate()
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
     }
 
     /// macOS doesn't let an accessory app (no Dock icon) take focus from the frontmost app,
-    /// even right after a click in its menu. So while Settings is open Claudometer is a regular
-    /// app, with a Dock icon, and goes back to accessory when the window closes.
+    /// even right after a click in its menu. So while Settings (or the welcome) is open
+    /// Claudometer is a regular app, with a Dock icon, and goes back to accessory when the
+    /// last of them closes.
     private static func activate() {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate()
+    }
+
+    static func deactivate() {
+        NSApp.setActivationPolicy(.accessory)
     }
 }
 
@@ -111,20 +124,23 @@ struct GeneralSettings: View {
     /// changes as usage moves, so every limit is offered and the menu bar skips the duplicate.
     private var addableWindows: [LimitWindow]? {
         guard let snapshot = store.state.snapshot else { return nil }
+        return snapshot.windows.filter { $0.id != mainWindowID }
+    }
+
+    /// This account's main ring, which can't also be pinned; nil with "Highest".
+    private var mainWindowID: String? {
         let metric = MenuBarMetric(rawValue: metric) ?? .session
-        let main = metric == .highest ? nil : snapshot.window(for: metric)
-        return snapshot.windows.filter { $0.id != main?.id }
+        return metric == .highest ? nil : store.state.snapshot?.window(for: metric)?.id
     }
 
     private func isPinned(_ id: String) -> Binding<Bool> {
         Binding(
             get: { MenuBarPins.decode(pinned).contains(id) },
             set: { on in
-                // Keep only limits listed here: pins on a limit that's gone or is now the main
-                // one (no session window, TZ §2.7) would otherwise slip past the two-pin cap.
-                let listed = Set(addableWindows?.map(\.id) ?? [])
-                var ids = MenuBarPins.decode(pinned).filter { $0 != id && listed.contains($0) }
-                if on { ids.append(id) }
+                // Pins of other accounts survive; one on this account's main ring (no session
+                // window, TZ §2.7) is dropped so it can't slip past the two-pin cap.
+                let ids = MenuBarPins.toggling(id, on: on, in: MenuBarPins.decode(pinned),
+                                               listed: addableWindows?.map(\.id) ?? [], main: mainWindowID)
                 pinned = MenuBarPins.encode(ids)
             }
         )
@@ -235,17 +251,17 @@ struct GeneralSettings: View {
         .onChange(of: refreshMinutes) {
             store.restartPolling()
             // The widget's stale limit follows the interval.
-            AppSettings.saveWidgetStyle()
+            AppSettings.saveWidgetStyleAndReload()
         }
         .onChange(of: sendCheckIn) { CheckInService.settingChanged() }
-        .onChange(of: metric) { AppSettings.saveWidgetStyle() }
+        .onChange(of: metric) { AppSettings.saveWidgetStyleAndReload() }
         .onChange(of: warning) {
             if critical < warning { critical = warning }
-            AppSettings.saveWidgetStyle()
+            AppSettings.saveWidgetStyleAndReload()
         }
         .onChange(of: critical) {
             if warning > critical { warning = critical }
-            AppSettings.saveWidgetStyle()
+            AppSettings.saveWidgetStyleAndReload()
         }
     }
 }
@@ -268,7 +284,7 @@ struct NotificationSettings: View {
                     Text(tr("At the levels below, once per limit until it resets."))
                 }
                 Group {
-                    ThresholdSlider(title: tr("First alert"), symbol: "bell.fill", tint: Palette.warningGlyph, value: percent($notifyLow), range: 50...100)
+                    ThresholdSlider(title: tr("First alert"), symbol: "bell.fill", tint: Palette.warningGlyph, value: percent($notifyLow), range: 50...95)
                     ThresholdSlider(title: tr("Second alert"), symbol: "bell.badge.fill", tint: Palette.criticalGlyph, value: percent($notifyHigh), range: 50...100)
                     Toggle(isOn: $notifyForecast) {
                         Text(tr("Notify when the pace runs out a limit early"))
@@ -845,7 +861,7 @@ struct ThresholdSlider: View {
                 Slider(value: $value, in: range, step: 5)
                     // The level itself, not the knob's position within the range.
                     .accessibilityValue(Text(verbatim: Formatters.percent(value)))
-                Text(verbatim: "\(Int(value))%").monospacedDigit().frame(width: 40, alignment: .trailing)
+                Text(verbatim: Formatters.percent(value)).monospacedDigit().frame(width: 40, alignment: .trailing)
                     .opacity(isEnabled ? 1 : 0.4)
             }
         } label: {

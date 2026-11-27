@@ -274,3 +274,14 @@
 "Daily budget: what was left of the weekly limit this morning, spread over the days until it resets." = "Дневная норма: остаток недельного лимита на утро, поделённый на дни до сброса.";
 "Main Limit" = "Основной лимит";
 "Same as Menu Bar" = "Как в строке меню";
+"Extra usage" = "Дополнительное использование";
+"%@ of %@" = "%@ из %@";
+
+/* First-launch welcome (FR-24) */
+"Welcome to Claudometer" = "Добро пожаловать в Claudometer";
+"Claudometer reads your Claude Code login to show your usage limits. The login is sent only to Anthropic." = "Claudometer использует вход Claude Code, чтобы показывать ваши лимиты. Данные входа передаются только в Anthropic.";
+"macOS may ask for Keychain access. If it does, choose “Always\U00A0Allow” so it doesn’t ask again." = "macOS может запросить доступ к связке ключей. Если запросит, выберите «Всегда\U00A0разрешать», чтобы запрос больше не появлялся.";
+"Not signed in to Claude Code? Run `claude` in Terminal, then `/login`." = "Не вошли в Claude Code? Запустите `claude` в Терминале, затем `/login`.";
+"No Claude Code? Add a claude.ai session key in Settings › Accounts." = "Нет Claude Code? Добавьте ключ сессии claude.ai в Настройках\U00A0›\U00A0Аккаунты.";
+"Claudometer opens at login so the widget stays up to date. You can turn this off in Settings › General." = "Claudometer открывается при входе в систему, чтобы виджет оставался актуальным. Это можно отключить в Настройках\U00A0›\U00A0Основные.";
+"Continue" = "Продолжить";

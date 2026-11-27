@@ -30,9 +30,11 @@ struct PopoverView: View {
                 .padding(.horizontal, 14)
                 .padding(.bottom, 6)
             }
+            // Read here, not per tick: it queries the Keychain, and only the error notice needs it.
+            let hasSessionKey = store.state.error != nil && SessionKeyStore(accountID: store.selectedID).hasKey
             // Countdowns tick every 30 s without a network call (FR-9).
             TimelineView(.periodic(from: .now, by: 30)) { context in
-                content(now: context.date)
+                content(now: context.date, hasSessionKey: hasSessionKey)
             }
             MenuDivider()
             actions
@@ -62,8 +64,9 @@ struct PopoverView: View {
     }
 
     @ViewBuilder
-    private func content(now: Date) -> some View {
-        let snapshot = store.state.snapshot
+    private func content(now: Date, hasSessionKey: Bool) -> some View {
+        // Limits whose reset has passed read 0%, as on the widget, even before a new fetch.
+        let snapshot = store.state.projected(at: now).snapshot
         let stale = store.isStale(at: now)
         let hero = snapshot?.window(for: MenuBarMetric(rawValue: metric) ?? .session)
         let others = snapshot?.windows.filter { $0.id != hero?.id } ?? []
@@ -77,7 +80,6 @@ struct PopoverView: View {
 
         VStack(alignment: .leading, spacing: 0) {
             if let error = store.state.error {
-                let hasSessionKey = SessionKeyStore(accountID: store.selectedID).hasKey
                 ErrorNotice(
                     error: error,
                     message: error.message(hasSessionKey: hasSessionKey),
@@ -90,7 +92,7 @@ struct PopoverView: View {
             } else if stale, let fetched = snapshot?.fetchedAt {
                 // Old data with no error (the Mac slept, or refreshes stalled): everything is
                 // grey, so say why here rather than only in the footer.
-                StaleNotice(fetched: fetched, now: now, isLoading: store.isLoading) { store.refresh() }
+                StaleNotice(fetched: fetched, now: now, isLoading: store.isLoading) { refresh() }
                     .padding(.horizontal, 14).padding(.vertical, 6)
             }
 
@@ -128,11 +130,21 @@ struct PopoverView: View {
                             LimitRow(window: window, level: level(window), stale: stale, now: now, forecast: forecast(window))
                         }
                     }
-                    if (snapshot?.windows ?? []).contains(where: { $0.elapsedFraction(now: now) != nil }) {
+                    // Only these rows draw the tick; the hero has none.
+                    if others.contains(where: { $0.elapsedFraction(now: now) != nil }) {
                         PaceLegend()
                     }
                 }
                 .padding(.horizontal, 14).padding(.vertical, 8)
+            }
+
+            // Paid usage past the limits (FR-36). Its own block: under "Weekly Limits" it read
+            // as one more weekly limit, and the limits block is absent when the hero is the only one.
+            if let extra = snapshot?.extraUsage {
+                MenuDivider()
+                ExtraUsageRow(extra: extra, level: extra.meterPercent.map { UsageLevel.of($0, warning: warning, critical: critical) } ?? .unknown,
+                              stale: stale)
+                    .padding(.horizontal, 14).padding(.vertical, 8)
             }
 
             // Usage per day of the weekly limit, once there's more than a day of history.
@@ -185,9 +197,16 @@ struct PopoverView: View {
         }
     }
 
+    /// Refresh Now and Try Again. While the welcome waits, polling hasn't started and these do
+    /// nothing, so they bring the welcome forward instead.
+    private func refresh(retry: Bool = false) {
+        if WelcomeWindow.reopen() { return }
+        if retry { store.retry() } else { store.refresh() }
+    }
+
     private func recover(_ recovery: ErrorRecovery) {
         switch recovery {
-        case .tryAgain: store.retry()
+        case .tryAgain: refresh(retry: true)
         case .addSessionKey, .updateSessionKey: SettingsWindow.open(openSettings, tab: .login)
         }
     }
@@ -216,7 +235,7 @@ struct PopoverView: View {
             if let release = updates.available {
                 updateRow(release)
             }
-            MenuRow(title: tr("Refresh Now"), shortcut: "⌘R") { store.refresh() }
+            MenuRow(title: tr("Refresh Now"), shortcut: "⌘R") { refresh() }
                 .keyboardShortcut("r")
                 .disabled(store.isLoading)
             if isPreviewRender {
@@ -276,7 +295,8 @@ struct HeroRow: View {
             Spacer(minLength: 0)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Formatters.accessibilityLabel(window, level: level, stale: stale, now: now))
+        .accessibilityLabel(Formatters.accessibilityLabel(window, level: level, stale: stale, now: now,
+                                                          pace: window.pace(now: now), forecast: forecast))
     }
 }
 
@@ -322,7 +342,70 @@ struct LimitRow: View {
                 .lineLimit(2)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Formatters.accessibilityLabel(window, level: level, stale: stale, now: now))
+        // No pace text here (the meter's tick shows it), so only the forecast line is added.
+        .accessibilityLabel(Formatters.accessibilityLabel(window, level: level, stale: stale, now: now, forecast: forecast))
+    }
+}
+
+/// Extra usage (TZ FR-36): the amount, and a meter against the monthly spending limit when
+/// there is one. Laid out like `LimitRow`, but it isn't a limit: no pace tick, reset line or
+/// copy. Where the title and amount don't fit on one line (Russian), the amount goes below.
+struct ExtraUsageRow: View {
+    let extra: ExtraUsage
+    /// `.unknown` without a spending limit.
+    let level: UsageLevel
+    let stale: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    title
+                    tag
+                    Spacer(minLength: 8)
+                    amount
+                }
+                // The level tag moves down with the amount, so the title keeps its full width;
+                // with a long amount it keeps only its symbol.
+                stacked(tag)
+                stacked(LevelTag(level: level, stale: stale, showsText: false).font(.system(size: 11)))
+            }
+            if let percent = extra.meterPercent {
+                MeterBar(fraction: percent / 100, level: stale ? .unknown : level, halo: Palette.canvas)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Formatters.extraUsageAccessibilityLabel(extra, level: level, stale: stale))
+    }
+
+    private func stacked(_ tag: some View) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            title
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                amount
+                tag
+            }
+        }
+    }
+
+    /// Primary ink, unlike `LimitRow`'s secondary: with no section header, the title labels the block.
+    private var title: some View {
+        Text(tr("Extra usage"))
+            .font(.system(size: 13))
+            .foregroundStyle(Ink.primary)
+            .lineLimit(1)
+            .truncationMode(.tail)
+    }
+
+    private var tag: some View {
+        LevelTag(level: level, stale: stale).font(.system(size: 11))
+    }
+
+    private var amount: some View {
+        Text(Formatters.extraUsageText(extra))
+            .font(.system(size: 13, weight: .medium).monospacedDigit())
+            .foregroundStyle(stale ? Ink.secondary : Ink.primary)
+            .fixedSize()
     }
 }
 
@@ -473,7 +556,8 @@ struct GlassAccountSwitcher: View {
                 let needsAction = store.state(of: account.id).error?.needsUserAction ?? false
                 Group {
                     if needsAction {
-                        Text("\(Image(systemName: "exclamationmark.triangle.fill")) \(account.title)")
+                        // Verbatim: the account name isn't a translatable string.
+                        Text(Image(systemName: "exclamationmark.triangle.fill")) + Text(verbatim: " \(account.title)")
                     } else {
                         Text(account.title)
                     }

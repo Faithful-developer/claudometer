@@ -46,6 +46,73 @@ private func json(_ string: String) -> Data { Data(string.utf8) }
         #expect(throws: AppError.apiChanged) { try UsageDecoder.decode(json("not json")) }
     }
 
+    // MARK: Extra usage
+
+    /// The enabled shape is synthetic: every real sample has extra usage off with null amounts,
+    /// so `sample-usage-extra` is the real sample with `spend` switched on ($12.40 of $50.00).
+    @Test func decodesExtraUsage() throws {
+        let snapshot = try UsageDecoder.decode(fixture("sample-usage-extra"))
+        let extra = try #require(snapshot.extraUsage)
+        #expect(extra == ExtraUsage(used: 12.4, limit: 50, currency: "USD", decimals: 2, percent: 24.8))
+        #expect(extra.meterPercent == 24.8)
+        #expect(snapshot.windows == (try UsageDecoder.decode(fixture("sample-usage"))).windows)
+    }
+
+    /// The real samples: switched off, amounts null.
+    @Test func extraUsageOffIsNil() throws {
+        let snapshot = try UsageDecoder.decode(fixture("sample-usage"))
+        #expect(snapshot.extraUsage == nil)
+        #expect(snapshot.windows.map(\.id) == ["session", "weekly_all", "weekly_scoped:Fable"])
+        #expect(try UsageDecoder.decode(fixture("sample-usage-ultra")).extraUsage == nil)
+    }
+
+    private func extraUsage(_ fields: String) throws -> ExtraUsage? {
+        try UsageDecoder.decode(json(#"{"five_hour":{"utilization":42},"# + fields + "}")).extraUsage
+    }
+
+    @Test func extraUsageShapes() throws {
+        // No spending limit: the amount alone, and no meter even though `percent` is 0.
+        let open = try #require(try extraUsage(#""spend":{"enabled":true,"used":{"amount_minor":1240,"currency":"EUR","exponent":2},"limit":null,"percent":0}"#))
+        #expect(open == ExtraUsage(used: 12.4, limit: nil, currency: "EUR", decimals: 2, percent: 0))
+        #expect(open.meterPercent == nil)
+        // A bare number limit is in minor units, like `used`; the percent is worked out.
+        let bare = try #require(try extraUsage(#""spend":{"enabled":true,"used":{"amount_minor":1240},"limit":5000}"#))
+        #expect(bare.limit == 50 && bare.currency == "USD" && bare.percent == nil)
+        #expect(abs((bare.meterPercent ?? 0) - 24.8) < 0.001)
+        // A limit object with its own exponent; a zero limit counts as none.
+        #expect(try extraUsage(#""spend":{"enabled":true,"used":{"amount_minor":5,"exponent":0},"limit":{"amount_minor":2000,"exponent":2}}"#)?.limit == 20)
+        #expect(try extraUsage(#""spend":{"enabled":true,"used":{"amount_minor":5},"limit":{"amount_minor":0}}"#)?.limit == nil)
+        // Odd exponents are clamped to 0...4, not trusted.
+        let odd = try #require(try extraUsage(#""spend":{"enabled":true,"used":{"amount_minor":"1240","exponent":"1e300"},"limit":{"amount_minor":"abc"},"percent":"nan"}"#))
+        #expect(odd == ExtraUsage(used: 0.124, limit: nil, currency: "USD", decimals: 4, percent: nil))
+    }
+
+    /// The older `extra_usage` block stands in when `spend` is missing or unreadable, not when it says off.
+    @Test func extraUsageFallsBackToTheOlderBlock() throws {
+        let legacy = #""extra_usage":{"is_enabled":true,"used_credits":1240,"monthly_limit":5000,"decimal_places":null,"currency":null,"utilization":null}"#
+        let expected = ExtraUsage(used: 12.4, limit: 50, currency: "USD", decimals: 2, percent: nil)
+        #expect(try extraUsage(legacy) == expected)
+        #expect(try extraUsage(#""spend":"x","# + legacy) == expected)
+        #expect(try extraUsage(#""spend":{"enabled":false},"# + legacy) == nil)
+    }
+
+    @Test func unreadableExtraUsageIsNil() throws {
+        for fields in [
+            #""spend":"x""#,
+            #""spend":{"enabled":true,"used":{"amount_minor":"abc"}}"#,
+            #""spend":{"enabled":true,"used":{"amount_minor":"inf","exponent":"nan"}}"#,
+            #""spend":{"enabled":true,"used":{"amount_minor":-100}}"#,
+            #""spend":{"enabled":"yes","used":{"amount_minor":100}}"#,
+            #""spend":{"enabled":true,"used":[1,2]}"#,
+            #""extra_usage":{"is_enabled":true,"used_credits":null}"#,
+            #""extra_usage":[]"#,
+        ] {
+            let snapshot = try UsageDecoder.decode(json(#"{"five_hour":{"utilization":42},"# + fields + "}"))
+            #expect(snapshot.extraUsage == nil, "\(fields)")
+            #expect(snapshot.session?.utilization == 42)
+        }
+    }
+
     @Test func parsesMicrosecondDates() throws {
         let date = try #require(UsageDecoder.parseISO8601("2026-10-06T12:19:59.654439+00:00"))
         let base = try #require(UsageDecoder.parseISO8601("2026-10-06T12:19:59Z"))
@@ -95,6 +162,42 @@ private func json(_ string: String) -> Data { Data(string.utf8) }
         let far = Formatters.resetText(now.addingTimeInterval(3 * 86400), now: now, locale: Locale(identifier: "en_US_POSIX"))
         #expect(far.hasPrefix("Resets ") && !far.hasPrefix("Resets in"))
         #expect(Formatters.shortReset(now.addingTimeInterval(600), now: now) == "in 10m")
+    }
+
+    /// The copy card: "resets" only before a countdown, never before "Not started".
+    @Test func cardDetail() {
+        func window(_ resetsAt: Date?, _ used: Double = 0) -> LimitWindow {
+            LimitWindow(id: "session", group: .session, title: "Session (5h)", utilization: used, resetsAt: resetsAt)
+        }
+        #expect(Formatters.cardDetail(window(nil), now: now) == "0% · Not started")
+        #expect(Formatters.cardDetail(window(now.addingTimeInterval(-5), 92), now: now) == "92% · Resetting…")
+        #expect(Formatters.cardDetail(window(now.addingTimeInterval(600), 40), now: now) == "40% · resets in 10m")
+        let far = Formatters.cardDetail(window(now.addingTimeInterval(3 * 86400), 40), now: now, locale: Locale(identifier: "en_US_POSIX"))
+        #expect(far.hasPrefix("40% · resets ") && !far.contains("in "))
+    }
+
+    /// VoiceOver hears the pace pill and the forecast line, but neither on old data.
+    @Test func accessibilityLabelReadsPaceAndForecast() {
+        let window = LimitWindow(id: "session", group: .session, title: "Session (5h)", utilization: 30, resetsAt: now.addingTimeInterval(3600))
+        let forecast = now.addingTimeInterval(1800)
+        let label = Formatters.accessibilityLabel(window, level: .ok, now: now, pace: .ahead, forecast: forecast)
+        #expect(label.hasSuffix("Ahead of pace, \(Formatters.forecastText(forecast, now: now))"))
+        #expect(Formatters.accessibilityLabel(window, level: .ok, now: now, pace: .under).hasSuffix("On track"))
+        // At a warning level the pill shows the level, not the pace.
+        #expect(!Formatters.accessibilityLabel(window, level: .warning, now: now, pace: .ahead).contains("Ahead of pace"))
+        let stale = Formatters.accessibilityLabel(window, level: .ok, stale: true, now: now, pace: .ahead, forecast: forecast)
+        #expect(stale == Formatters.accessibilityLabel(window, level: .ok, stale: true, now: now))
+        #expect(Formatters.accessibilityLabel(window, now: now) == "Session (5h), 30 percent used, Resets in 1h")
+    }
+
+    @Test func extraUsageText() {
+        let en = Locale(identifier: "en_US")
+        let extra = ExtraUsage(used: 12.4, limit: 50, currency: "USD", decimals: 2, percent: nil)
+        #expect(Formatters.extraUsageText(extra, locale: en) == "$12.40 of $50.00")
+        #expect(Formatters.extraUsageAccessibilityLabel(extra, locale: en) == "Extra usage, $12.40 of $50.00")
+        let open = ExtraUsage(used: 1234.5, limit: nil, currency: "EUR", decimals: 2, percent: nil)
+        #expect(Formatters.extraUsageText(open, locale: en) == "€1,234.50")
+        #expect(Formatters.currency(7, code: "JPY", decimals: 0, locale: en) == "¥7")
     }
 
     @Test func percentClamps() {
@@ -341,6 +444,40 @@ private func json(_ string: String) -> Data { Data(string.utf8) }
         #expect(snapshot.windows.map(\.settingsTitle) == ["Session (5h)", "Weekly (all models)", "Weekly (Fable)", "Weekly (Opus)"])
     }
 
+    /// The pin setting is shared by all accounts: toggling here keeps another account's pins.
+    @Test func togglingKeepsOtherAccountsPins() {
+        let listed = ["weekly_all", "weekly_scoped:Fable"]
+        let other = "weekly_scoped:Opus"   // not listed on this account
+        #expect(MenuBarPins.toggling("weekly_all", on: true, in: [other], listed: listed, main: "session") == [other, "weekly_all"])
+        #expect(MenuBarPins.toggling("weekly_all", on: false, in: [other, "weekly_all"], listed: listed, main: "session") == [other])
+    }
+
+    /// A limit that is now this account's main ring can't stay pinned.
+    @Test func togglingDropsTheMainLimit() {
+        let listed = ["session", "weekly_scoped:Fable"]
+        #expect(MenuBarPins.toggling("session", on: true, in: ["weekly_all"], listed: listed, main: "weekly_all") == ["session"])
+        // With "Highest" there is no fixed main ring.
+        #expect(MenuBarPins.toggling("session", on: true, in: ["weekly_all"], listed: listed, main: nil) == ["weekly_all", "session"])
+    }
+
+    /// The cap counts this account's listed pins only; at the cap nothing is added.
+    @Test func togglingRespectsTheCap() {
+        let listed = ["weekly_all", "weekly_scoped:Fable", "weekly_scoped:Opus"]
+        let full = ["weekly_all", "weekly_scoped:Fable"]
+        #expect(MenuBarPins.toggling("weekly_scoped:Opus", on: true, in: full, listed: listed, main: "session") == full)
+        let elsewhere = ["weekly_scoped:A", "weekly_scoped:B", "weekly_all"]
+        #expect(MenuBarPins.toggling("weekly_scoped:Fable", on: true, in: elsewhere, listed: listed, main: "session") == elsewhere + ["weekly_scoped:Fable"])
+    }
+
+    /// Unlisted ids can't pile up forever: past eight, the oldest unlisted go first.
+    @Test func togglingBoundsGrowth() {
+        let old = (1...9).map { "weekly_scoped:Old\($0)" }
+        let ids = MenuBarPins.toggling("weekly_all", on: true, in: old, listed: ["weekly_all"], main: "session")
+        #expect(ids.count == 8)
+        #expect(ids.last == "weekly_all")
+        #expect(ids == Array(old.dropFirst(2)) + ["weekly_all"])
+    }
+
     @Test func pinsRoundTrip() {
         #expect(MenuBarPins.decode("") == [])
         let pins = ["weekly_all", "weekly_scoped:Fable"]
@@ -485,6 +622,22 @@ private func json(_ string: String) -> Data { Data(string.utf8) }
         #expect(WidgetStyle().staleAt(fetched) == fetched.addingTimeInterval(35 * 60))
     }
 
+    /// `usage-state.json` as 0.5.0 writes it (no `extraUsage`), which the widget may still read.
+    @Test func stateWithoutExtraUsageDecodes() throws {
+        let json = Data("""
+        {"snapshot":{"breakdown":[],"fetchedAt":"2026-11-20T10:00:00Z","plan":"max","source":"claudeCode",
+         "windows":[{"group":"session","id":"session","resetsAt":"2026-11-20T12:00:00Z","title":"Session (5h)","utilization":12}]}}
+        """.utf8)
+        let state = try SnapshotStore.decoder.decode(UsageState.self, from: json)
+        #expect(state.snapshot?.windows.first?.utilization == 12)
+        #expect(state.snapshot?.extraUsage == nil)
+        // And a state with it round-trips.
+        let extra = ExtraUsage(used: 12.4, limit: nil, currency: "USD", decimals: 2, percent: nil)
+        let saved = UsageState(snapshot: UsageSnapshot(windows: [], extraUsage: extra))
+        let loaded = try SnapshotStore.decoder.decode(UsageState.self, from: SnapshotStore.encoder.encode(saved))
+        #expect(loaded.snapshot?.extraUsage == extra)
+    }
+
     @Test func olderStyleFilesStillDecode() throws {
         let json = Data(#"{"metric":"session","warning":60,"critical":85,"language":"en"}"#.utf8)
         let style = try JSONDecoder().decode(WidgetStyle.self, from: json)
@@ -535,8 +688,42 @@ private func json(_ string: String) -> Data { Data(string.utf8) }
     @Test func includesTheStaleCutOff() {
         let staleAt = now.addingTimeInterval(33 * 60 + 20)
         let dates = WidgetTimeline.entryDates(now: now, resets: [], staleAt: staleAt)
-        #expect(dates.contains(staleAt))
+        // A second past the cut-off: `isStale` is a strict `>`.
+        #expect(dates.contains(staleAt.addingTimeInterval(1)))
         #expect(dates.count == 26)
+    }
+
+    /// The entry made for the cut-off draws as stale, whether a regular entry lands exactly on
+    /// the cut-off (fetched now) or just after the stale entry (fetched 2 s ago).
+    @Test func staleEntryDrawsStale() throws {
+        for age: TimeInterval in [0, 2] {
+            let state = UsageState(snapshot: UsageSnapshot(windows: [], fetchedAt: now.addingTimeInterval(-age)))
+            let style = WidgetStyle()
+            let staleAt = style.staleAt(state.snapshot!.fetchedAt)
+            let maxAge = UsageState.maxAge(refreshMinutes: style.refreshMinutes)
+            let dates = WidgetTimeline.entryDates(now: now, resets: [], staleAt: staleAt)
+            let entry = try #require(dates.first { $0 >= staleAt })
+            #expect(state.isStale(at: entry, maxAge: maxAge))
+            let before = try #require(dates.last { $0 < entry })
+            #expect(!state.isStale(at: before, maxAge: maxAge))
+        }
+    }
+
+    /// A regular 5-minute entry 2 s before a reset gives way to the reset itself.
+    @Test func resetWinsOverANearbyRegularEntry() {
+        let reset = now.addingTimeInterval(20 * 60 + 2)
+        let dates = WidgetTimeline.entryDates(now: now, resets: [reset], staleAt: nil)
+        #expect(dates.contains(reset))
+        #expect(!dates.contains(now.addingTimeInterval(20 * 60)))
+        #expect(zip(dates, dates.dropFirst()).allSatisfy { $1.timeIntervalSince($0) >= 5 })
+    }
+
+    /// A reset right after `now` keeps both: the first entry is never dropped.
+    @Test func resetRightAfterNowKeepsBoth() {
+        let reset = now.addingTimeInterval(2)
+        let dates = WidgetTimeline.entryDates(now: now, resets: [reset], staleAt: nil)
+        #expect(Array(dates.prefix(2)) == [now, reset])
+        #expect(dates == dates.sorted() && Set(dates).count == dates.count)
     }
 
     @Test func staysSmall() {
@@ -600,6 +787,19 @@ private func json(_ string: String) -> Data { Data(string.utf8) }
         #expect(projected.source == .claudeWeb)
         #expect(snapshot.projected(at: now.addingTimeInterval(-7200)) == snapshot)
     }
+
+    /// `projected`, `withPlan` and `withSource` rebuild the snapshot; extra usage must survive each.
+    @Test func rebuiltSnapshotsKeepExtraUsage() {
+        let now = Date()
+        let extra = ExtraUsage(used: 12.4, limit: 50, currency: "USD", decimals: 2, percent: 24.8)
+        let snapshot = UsageSnapshot(windows: [
+            LimitWindow(id: "session", group: .session, title: "Session (5h)", utilization: 80, resetsAt: now.addingTimeInterval(-60)),
+        ], extraUsage: extra)
+        let projected = snapshot.projected(at: now)
+        #expect(projected.windows.first?.utilization == 0)
+        #expect(projected.extraUsage == extra)
+        #expect(snapshot.withPlan("max").withSource(.claudeWeb).extraUsage == extra)
+    }
 }
 
 @Suite struct UpdateTests {
@@ -646,6 +846,18 @@ private func json(_ string: String) -> Data { Data(string.utf8) }
 
 @Suite struct OutageTests {
     let start = Date(timeIntervalSince1970: 1_800_000_000)
+
+    /// A widget or alert click: login problems open Settings › Accounts, a changed API the
+    /// About tab, anything else (or no error) the menu.
+    @Test func clickDestination() {
+        for error: AppError in [.notSignedIn, .tokenExpired, .sessionKeyInvalid, .keychainDenied] {
+            #expect(ClickDestination(error: error) == .login)
+        }
+        #expect(ClickDestination(error: .apiChanged) == .about)
+        for error: AppError? in [nil, .offline, .webBlocked, .rateLimited(retryAfter: 60), .server(status: 503), .unknown("x")] {
+            #expect(ClickDestination(error: error) == .menu)
+        }
+    }
 
     @Test func userActionErrorsAlertRightAway() {
         var tracker = OutageTracker()
@@ -748,6 +960,20 @@ private func json(_ string: String) -> Data { Data(string.utf8) }
             #expect(window.shortTitle == "Fable")
             #expect(window.settingsTitle == "Неделя (Fable)")
             #expect(AppError.offline.message == "Нет подключения к интернету. Повтор будет выполнен автоматически.")
+            #expect(Formatters.cardDetail(window, now: now) == "80% · Отсчет не начат")
+            let resetting = LimitWindow(id: "session", group: .session, title: "Session (5h)", utilization: 92, resetsAt: now)
+            #expect(Formatters.cardDetail(resetting, now: now) == "92% · Сброс…")
+            let soon = LimitWindow(id: "session", group: .session, title: "Session (5h)", utilization: 40, resetsAt: now.addingTimeInterval(2 * 3600))
+            #expect(Formatters.cardDetail(soon, now: now) == "40% · сброс через 2\u{a0}ч")
+        }
+    }
+
+    @Test func russianExtraUsage() {
+        inRussian {
+            let extra = ExtraUsage(used: 12.4, limit: 50, currency: "USD", decimals: 2, percent: nil)
+            let ru = Locale(identifier: "ru_RU")
+            #expect(Formatters.extraUsageText(extra, locale: ru) == "12,40\u{a0}$ из 50,00\u{a0}$")
+            #expect(Formatters.extraUsageAccessibilityLabel(extra, locale: ru) == "Дополнительное использование, 12,40\u{a0}$ из 50,00\u{a0}$")
         }
     }
 

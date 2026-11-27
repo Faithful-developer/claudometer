@@ -15,6 +15,9 @@ final class NotificationManager {
     nonisolated static let offlineIdentifier = "outage|offline"
     nonisolated static let updateIdentifier = "update"
     nonisolated static let installAction = "install"
+    /// `userInfo` key naming the account a limit or outage alert is about, so a click on it
+    /// opens that account (`AppDelegate.show(account:)`).
+    nonisolated static let accountKey = "account"
     /// Update notification without the Install button, for when installing in place isn't
     /// possible (the button would only have opened the web page).
     nonisolated static let updateLinkCategory = "update.link"
@@ -141,6 +144,8 @@ final class NotificationManager {
             content.body = [error.message.replacingOccurrences(of: "`", with: ""),
                             fetchedAt.map { Formatters.notUpdatedText($0) + "." }]
                 .compactMap { $0 }.joined(separator: " ")
+            // The shared "no connection" alert belongs to no one account.
+            if identifier != Self.offlineIdentifier { content.userInfo = [Self.accountKey: account] }
             let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
             // On by default, so permission may not have been asked yet; the system asks only once.
             Task {
@@ -173,6 +178,7 @@ final class NotificationManager {
         let lowerThreshold = thresholds.min() ?? 0
         let center = UNUserNotificationCenter.current()
         let content = UNMutableNotificationContent()
+        content.userInfo = [Self.accountKey: account]
         let identifier: String
         switch event {
         case .crossed(let window, let threshold):

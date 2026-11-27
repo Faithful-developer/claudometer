@@ -13,21 +13,31 @@ public enum WidgetTimeline {
     public static let finalStretch: TimeInterval = 15 * 60
 
     /// Sorted, distinct entry dates from `now`: every `step` across `span`, every minute in
-    /// the `finalStretch` before each reset in the span, the reset itself, and `staleAt` (when
-    /// the data turns stale) if it falls in the span. At most a few dozen entries.
+    /// the `finalStretch` before each reset in the span, the reset itself, and one second past
+    /// `staleAt` (when the data turns stale) if that falls in the span. `isStale` is a strict
+    /// `>`, so an entry at exactly `staleAt` would still draw as live until the next one.
+    /// Entries closer than 5 s collapse into one; a reset or the stale entry wins over a regular
+    /// one there, except that the first entry (`now`) is never dropped. At most a few dozen entries.
     public static func entryDates(now: Date, resets: [Date], staleAt: Date?) -> [Date] {
         let end = now.addingTimeInterval(span)
         var dates = stride(from: 0, through: span, by: step).map { now.addingTimeInterval($0) }
+        // The entries that change what's drawn; the rest only move countdowns along.
+        var priority = Set<Date>()
         for reset in Set(resets) where reset > now && reset <= end {
             let start = max(now, reset.addingTimeInterval(-finalStretch))
             dates += stride(from: reset.timeIntervalSince(start), to: 0, by: -60).map { reset.addingTimeInterval(-$0) }
-            dates.append(reset)
+            priority.insert(reset)
         }
-        if let staleAt, staleAt > now, staleAt <= end { dates.append(staleAt) }
+        if let stale = staleAt?.addingTimeInterval(1), stale > now, stale <= end { priority.insert(stale) }
         // Entries closer than a few seconds draw the same thing.
         var result: [Date] = []
-        for date in dates.sorted() where result.last.map({ date.timeIntervalSince($0) >= 5 }) ?? true {
-            result.append(date)
+        for date in Set(dates).union(priority).sorted() {
+            guard let last = result.last, date.timeIntervalSince(last) < 5 else {
+                result.append(date)
+                continue
+            }
+            guard priority.contains(date), !priority.contains(last) else { continue }
+            if result.count == 1 { result.append(date) } else { result[result.count - 1] = date }
         }
         return result
     }

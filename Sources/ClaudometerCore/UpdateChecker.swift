@@ -39,14 +39,26 @@ public struct UpdateChecker: Sendable {
         self.session = session
     }
 
-    /// The latest release if it is newer than `currentVersion`, otherwise nil.
+    /// GitHub answered with something other than a release or "none yet" (rate limit, outage),
+    /// so the check says nothing about whether an update exists.
+    public struct Failure: Error, Equatable {
+        /// HTTP status; nil when the response wasn't HTTP.
+        public let status: Int?
+    }
+
+    /// The latest release if it is newer than `currentVersion`, otherwise nil. Throws when
+    /// GitHub didn't answer 200 or 404, so a 403 or 5xx isn't reported as "up to date".
     public func check(currentVersion: String) async throws -> AppRelease? {
         var request = URLRequest(url: URL(string: "https://api.github.com/repos/\(Self.repository)/releases/latest")!, timeoutInterval: 15)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         let (data, response) = try await session.data(for: request)
-        // 404 = nothing published yet.
-        guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
-        return Self.newer(than: currentVersion, in: data)
+        let status = (response as? HTTPURLResponse)?.statusCode
+        switch status {
+        case 200: return Self.newer(than: currentVersion, in: data)
+        // Nothing published yet.
+        case 404: return nil
+        default: throw Failure(status: status)
+        }
     }
 
     static func newer(than current: String, in data: Data) -> AppRelease? {

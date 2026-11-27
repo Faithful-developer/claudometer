@@ -35,7 +35,7 @@ The code is short and open, so you can check all of this yourself: [`Credentials
 
 ### About the Keychain prompt
 
-The first time Claudometer reads Claude Code's login, macOS may show *"Claudometer wants to use your confidential information stored in 'Claude Code-credentials' in your keychain."* That's expected: it's how the app reuses your existing Claude Code login instead of asking for a password. Choose **Always Allow** so it doesn't ask on every check. You can revoke it any time in Keychain Access.
+The first time Claudometer reads Claude Code's login, macOS may show *"Claudometer wants to use your confidential information stored in 'Claude Code-credentials' in your keychain."* That's expected: it's how the app reuses your existing Claude Code login instead of asking for a password. Choose **Always Allow** so it doesn't ask on every check. You can revoke it any time in Keychain Access. On a new install, a short welcome window explains this first, and any prompt comes only after you click **Continue**.
 
 The full specification is in [TZ.md](TZ.md).
 
@@ -153,7 +153,7 @@ Claudometer follows Apple's Human Interface Guidelines and looks like a built-in
 
 ## Developer notes
 
-- `Claudometer --render-previews <dir> [--sample high|rings|pinned|ultra|stale|expired|signedout|accounts] [--language ru]` renders the menu bar icon, popover, the weekly chart with a hovered day, settings and all three widget sizes (light and dark) to PNGs, then exits. It uses the cached state, or made-up numbers: `--sample high` for high usage, `--sample rings` for two other limits high enough to get extra menu bar rings, `--sample pinned` for weekly and Fable added to the menu bar, `--sample ultra` for a plan without a 5‑hour session limit, `--sample accounts` for four accounts, the most there can be. It's used for the screenshots above.
+- `Claudometer --render-previews <dir> [--sample high|extra|rings|pinned|ultra|stale|expired|signedout|accounts] [--language ru]` renders the menu bar icon, popover, the weekly chart with a hovered day, settings, the first-launch welcome and all three widget sizes (light and dark) to PNGs, then exits. It uses the cached state, or made-up numbers: `--sample high` for high usage, `--sample extra` for the same with extra usage switched on, `--sample rings` for two other limits high enough to get extra menu bar rings, `--sample pinned` for weekly and Fable added to the menu bar, `--sample ultra` for a plan without a 5‑hour session limit, `--sample accounts` for four accounts, the most there can be. It's used for the screenshots above.
 - UI text goes through `tr("English text")`; add the Russian to `Resources/Localization/ru.lproj` (a test fails on missing keys).
 - `swift scripts/make-icon.swift` regenerates `Resources/AppIcon.icns`.
 - `scripts/release.sh 0.2.0 "notes"` builds the app with the widget, packages a DMG, tags `v0.2.0`, publishes the GitHub release and bumps the cask in [Faithful-developer/homebrew-tap](https://github.com/Faithful-developer/homebrew-tap). Always bump the version: the in-app update check compares it with the latest release.

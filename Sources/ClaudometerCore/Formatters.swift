@@ -65,6 +65,18 @@ public enum Formatters {
         }
     }
 
+    /// Right-hand text of a copy-card row: "68% · resets Fri 21:53", or "0% · Not started" /
+    /// "92% · Resetting…" when there's no countdown ("resets Not started" read wrong).
+    public static func cardDetail(_ window: LimitWindow, now: Date = Date(), calendar: Calendar = .current, locale: Locale = L10n.locale) -> String {
+        let used = percent(window.utilization)
+        switch resetPhrase(window.resetsAt, now: now, calendar: calendar, locale: locale) {
+        case .notStarted, .resetting:
+            return tr("%@ · %@", used, resetText(window.resetsAt, now: now, calendar: calendar, locale: locale))
+        case .within, .on:
+            return tr("%@ · resets %@", used, shortReset(window.resetsAt, now: now, calendar: calendar, locale: locale))
+        }
+    }
+
     /// "42%", clamped at 0. Over the limit reads "100%+" rather than a figure above 100.
     public static func percent(_ value: Double) -> String {
         if value > 100 { return tr("100%+") }
@@ -98,13 +110,27 @@ public enum Formatters {
         return plan.prefix(1).uppercased() + plan.dropFirst()
     }
 
-    /// VoiceOver description of a window: title, percent, level, reset.
-    /// "Session (5h), 91 percent used, near limit, Resets in 2h 40m".
-    public static func accessibilityLabel(_ window: LimitWindow, level: UsageLevel = .ok, stale: Bool = false, now: Date = Date()) -> String {
+    /// VoiceOver description of a window: title, percent, level, reset, then the pace and
+    /// forecast lines the row shows. "Session (5h), 91 percent used, near limit, Resets in 2h 40m".
+    /// Pace is read only where the status pill shows it: live data at a normal level.
+    public static func accessibilityLabel(_ window: LimitWindow, level: UsageLevel = .ok, stale: Bool = false, now: Date = Date(),
+                                          pace: Pace? = nil, forecast: Date? = nil) -> String {
         var parts = [window.title, tr("%lld percent used", Int(min(max(window.utilization, 0), 999).rounded()))]
         if let label = levelLabel(level) { parts.append(stale ? tr("last known %@", label) : label) }
         parts.append(stale ? tr("out of date") : resetText(window.resetsAt, now: now))
+        if !stale {
+            if level == .ok, let pace { parts.append(paceLabel(pace)) }
+            if let forecast { parts.append(forecastText(forecast, now: now)) }
+        }
         return parts.joined(separator: ", ")
+    }
+
+    /// "Ahead of pace" / "On track", as on the status pill.
+    public static func paceLabel(_ pace: Pace) -> String {
+        switch pace {
+        case .ahead: return tr("Ahead of pace")
+        case .under, .on: return tr("On track")
+        }
     }
 
     /// Spoken/short form of a level: "near limit", "getting close".
@@ -114,6 +140,32 @@ public enum Formatters {
         case .warning: return tr("getting close")
         case .ok, .unknown: return nil
         }
+    }
+
+    /// "$12.40" in the UI language's style, with exactly `decimals` fraction digits.
+    public static func currency(_ amount: Double, code: String, decimals: Int, locale: Locale = L10n.locale) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.locale = locale
+        formatter.currencyCode = code
+        formatter.minimumFractionDigits = decimals
+        formatter.maximumFractionDigits = decimals
+        return formatter.string(from: NSNumber(value: amount)) ?? "\(code) \(amount)"
+    }
+
+    /// "$12.40 of $50.00", or just "$12.40" when there's no spending limit.
+    public static func extraUsageText(_ extra: ExtraUsage, locale: Locale = L10n.locale) -> String {
+        let used = currency(extra.used, code: extra.currency, decimals: extra.decimals, locale: locale)
+        guard let limit = extra.limit else { return used }
+        return tr("%@ of %@", used, currency(limit, code: extra.currency, decimals: extra.decimals, locale: locale))
+    }
+
+    /// VoiceOver: "Extra usage, $12.40 of $50.00", plus the level the row's tag shows.
+    public static func extraUsageAccessibilityLabel(_ extra: ExtraUsage, level: UsageLevel = .unknown, stale: Bool = false,
+                                                    locale: Locale = L10n.locale) -> String {
+        var parts = [tr("Extra usage"), extraUsageText(extra, locale: locale)]
+        if let label = levelLabel(level) { parts.append(stale ? tr("last known %@", label) : label) }
+        return parts.joined(separator: ", ")
     }
 
     /// "Not updated since 14:05" / "Not updated since 10/10/26, 14:05": the one phrase for

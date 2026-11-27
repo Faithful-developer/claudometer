@@ -50,7 +50,8 @@ enum LimitImage {
         return stale ? Formatters.notUpdatedText(snapshot.fetchedAt, now: now) : now.formatted(style)
     }
 
-    /// One limit: title on the left, "68% · resets Fri 21:53" on the right, meter below.
+    /// One limit: title on the left, "68% · resets Fri 21:53" (or "0% · Not started") on the
+    /// right, meter below.
     private struct CardRow: View {
         let window: LimitWindow
         let level: UsageLevel
@@ -65,7 +66,7 @@ enum LimitImage {
                         .lineLimit(1)
                         .truncationMode(.tail)
                     Spacer(minLength: 8)
-                    Text(tr("%@ · resets %@", Formatters.percent(window.utilization), Formatters.shortReset(window.resetsAt, now: now)))
+                    Text(Formatters.cardDetail(window, now: now))
                         .monospacedDigit()
                         .foregroundStyle(Ink.secondary)
                         .fixedSize()

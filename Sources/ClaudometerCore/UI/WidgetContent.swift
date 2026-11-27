@@ -207,7 +207,7 @@ public struct UsageWidgetContent: View {
             }
             .frame(minWidth: 96)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(hero.map { Formatters.accessibilityLabel($0, level: level, stale: isStale, now: now) } ?? tr("No data"))
+            .accessibilityLabel(hero.map { Formatters.accessibilityLabel($0, level: level, stale: isStale, now: now, pace: $0.pace(now: now)) } ?? tr("No data"))
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(others) { row($0, caption: true) }
                 Spacer(minLength: 0)
@@ -255,7 +255,8 @@ public struct UsageWidgetContent: View {
                     }
                 }
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel(Formatters.accessibilityLabel(hero, level: level, stale: isStale, now: now))
+                .accessibilityLabel(Formatters.accessibilityLabel(hero, level: level, stale: isStale, now: now,
+                                                                  pace: hero.pace(now: now), forecast: forecast))
                 if noSessionCaption {
                     // Why there's no session ring, as in the popover (TZ FR-34).
                     Text(tr("No 5-hour session limit on this plan"))

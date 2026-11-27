@@ -157,7 +157,12 @@ final class UsageStore {
     }
 
     /// `fetchNow` false waits a full interval first, for an account whose data just came in.
+    /// Nothing before `start()`: on a fresh install that waits for the welcome, so the first
+    /// Keychain read (and any prompt) comes after it's explained. Every fetch passes through
+    /// here (Refresh, Try Again, a widget or alert click, a new key), and `start()` polls every
+    /// account anyway.
     private func restartPolling(_ id: String, fetchNow: Bool = true) {
+        guard started else { return }
         pollTasks[id]?.cancel()
         pollTasks[id] = Task { [weak self] in
             var fetchNow = fetchNow
@@ -189,7 +194,8 @@ final class UsageStore {
 
     /// Refresh button. Debounced to one fetch every 10 s (FR-18).
     func refresh() {
-        guard Date().timeIntervalSince(lastManualRefresh) >= 10 else { return }
+        // Before `start()` nothing is fetched, so don't spend the debounce either.
+        guard started, Date().timeIntervalSince(lastManualRefresh) >= 10 else { return }
         lastManualRefresh = Date()
         restartPolling()
     }
